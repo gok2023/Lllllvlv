@@ -30,7 +30,7 @@ import {
 import { isLiveWindow, sendWindowState } from "./core/window-lifecycle";
 import { SingleInstance } from "./core/single-instance";
 import { z } from "zod";
-import { SettingsStore, customPlayerInputSchema } from "./core/settings";
+import { SettingsStore, customPlayerInputSchema, normalizeWebServiceUrl } from "./core/settings";
 import {
   WindowStateStore,
   defaultWindowSize,
@@ -106,6 +106,8 @@ const windowIcon = join(
   process.env.FREEBO_DEV_URL ? "../public/icon.png" : "../dist/icon.png",
 );
 const providers = new ProviderRegistry([embyProvider, jellyfinProvider, plexProvider]);
+const servicePartition = (server: Server) =>
+  server.providerId === "web" ? `persist:web-${server.id}` : providers.partition(server);
 const playback = new PlaybackManager();
 function locale() {
   return resolveLocale(store.value.language, app.getLocale());
@@ -207,7 +209,10 @@ function state(): AppState {
     ),
     adapterStatus,
     locale: locale(),
-    providers: providers.list(),
+    providers: [
+      ...providers.list(),
+      { id: "web", name: translate(locale(), "webService"), supportsCredentials: false },
+    ],
     page,
     settingsPage,
     playbackPopupOpen: isLiveWindow(playbackPopup) && playbackPopup.isVisible(),
@@ -309,21 +314,22 @@ async function openServer(id: string, destination?: string) {
     publish();
     return;
   }
-  const provider = providers.get(server.providerId);
+  const isWeb = server.providerId === "web";
+  const provider = isWeb ? undefined : providers.get(server.providerId);
   closeGuest();
   activeServer = server;
   shown = true;
   page = "library";
   webError = undefined;
   webStatus = "loading";
-  const ses = session.fromPartition(providers.partition(server));
+  const ses = session.fromPartition(servicePartition(server));
   // Emby treats Electron as its own desktop client and requests a missing native plugin.
   ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
   ses.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   guest = new WebContentsView({
     webPreferences: {
-      preload: join(__dirname, provider.preload),
-      partition: providers.partition(server),
+      ...(provider ? { preload: join(__dirname, provider.preload) } : {}),
+      partition: servicePartition(server),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -331,7 +337,9 @@ async function openServer(id: string, destination?: string) {
     },
   });
   const view = guest;
-  const faviconFetcher = guardServerAccess(browserFetcher(ses, provider.entryUrl(server)));
+  const faviconFetcher = provider
+    ? guardServerAccess(browserFetcher(ses, provider.entryUrl(server)))
+    : undefined;
   let faviconRevision = 0;
   let faviconKey: string | undefined;
   view.webContents.on("page-favicon-updated", (_event, favicons) => {
@@ -340,6 +348,7 @@ async function openServer(id: string, destination?: string) {
     if (key === faviconKey) return;
     faviconKey = key;
     const revision = ++faviconRevision;
+    if (!faviconFetcher) return;
     void loadFavicon(favicons, faviconFetcher).then((icon) => {
       if (guest !== view || revision !== faviconRevision || view.webContents.isDestroyed()) return;
       if (icon) serverFavicons.set(server.id, { url: server.url, icon });
@@ -355,11 +364,17 @@ async function openServer(id: string, destination?: string) {
   });
   const origin = new URL(server.url).origin;
   view.webContents.setWindowOpenHandler(({ url }) => {
+    if (isWeb) {
+      if (/^https?:\/\//i.test(url))
+        void view.webContents.loadURL(url).catch((error) => log(String(error)));
+      return { action: "deny" };
+    }
     if (url.startsWith("https://") && new URL(url).origin !== origin) void shell.openExternal(url);
     return { action: "deny" };
   });
   const guardNavigation = (event: { preventDefault(): void }, url: string) => {
-    if (new URL(url).origin !== origin) {
+    if (isWeb && /^https?:\/\//i.test(url)) return;
+    if (!/^https?:\/\//i.test(url) || new URL(url).origin !== origin) {
       event.preventDefault();
       webError = errorToken("externalNavigation");
       layout();
@@ -374,7 +389,7 @@ async function openServer(id: string, destination?: string) {
       layout();
       publish();
     }
-    if (provider.adapterScript)
+    if (provider?.adapterScript)
       void view.webContents
         .executeJavaScript(provider.adapterScript)
         .catch((error) => log(String(error)));
@@ -431,7 +446,7 @@ async function openServer(id: string, destination?: string) {
   await store.save({ ...store.value, activeServerId: id });
   publish();
   void view.webContents
-    .loadURL(destination ?? provider.entryUrl(server))
+    .loadURL(destination ?? (provider ? provider.entryUrl(server) : server.url))
     .catch((error) => log(String(error)));
 }
 
@@ -663,11 +678,14 @@ function setupIPC() {
         credentials: credentialsSchema.optional(),
       })
       .parse(input);
-    const provider = providers.get(server.providerId);
-    if (server.credentials && provider.supportsCredentials === false)
+    const provider = server.providerId === "web" ? undefined : providers.get(server.providerId);
+    if (server.credentials && (!provider || provider.supportsCredentials === false))
       throw new UserFacingError("plexWebSignIn");
     const savedServer = await store.upsertServer(
-      { ...server, url: provider.normalizeUrl(server.url) },
+      {
+        ...server,
+        url: provider ? provider.normalizeUrl(server.url) : normalizeWebServiceUrl(server.url),
+      },
       async (saved) => {
         const previous = store.value.servers.find((entry) => entry.id === saved.id);
         if (server.credentials !== undefined) await credentials.set(saved, server.credentials);
@@ -700,8 +718,8 @@ function setupIPC() {
         credentials: credentialsSchema.optional(),
       })
       .parse(input);
-    const provider = providers.get(request.providerId);
-    if (!provider.testConnection) throw new UserFacingError("providerMissing");
+    const provider = request.providerId === "web" ? undefined : providers.get(request.providerId);
+    if (!provider?.testConnection) throw new UserFacingError("providerMissing");
     const url = provider.normalizeUrl(request.url);
     const registered = store.value.servers.find(
       (server) =>
@@ -899,7 +917,9 @@ function setupIPC() {
     if (!guest || !activeServer) return;
     if (action === "home")
       void guest.webContents.loadURL(
-        providers.get(activeServer.providerId).entryUrl(activeServer, true),
+        activeServer.providerId === "web"
+          ? activeServer.url
+          : providers.get(activeServer.providerId).entryUrl(activeServer, true),
       );
     else if (action === "reload" || action === "forceReload") {
       webError = undefined;
@@ -923,7 +943,7 @@ function setupIPC() {
     const server = store.value.servers.find((s) => s.id === id);
     if (!server) throw new UserFacingError("serverMissing");
     if (activeServer?.id === id) closeGuest();
-    await session.fromPartition(providers.partition(server)).clearStorageData();
+    await session.fromPartition(servicePartition(server)).clearStorageData();
     publish();
     return state();
   });
@@ -956,6 +976,7 @@ function setupIPC() {
   ipcMain.on("server:ready", (event, status) => {
     if (
       guest &&
+      activeServer?.providerId !== "web" &&
       event.sender === guest.webContents &&
       event.senderFrame === guest.webContents.mainFrame
     ) {
@@ -981,6 +1002,7 @@ function setupIPC() {
     if (
       !view ||
       !server ||
+      server.providerId === "web" ||
       event.sender !== view.webContents ||
       frame !== view.webContents.mainFrame ||
       !frame ||
@@ -997,6 +1019,7 @@ function setupIPC() {
     if (
       !guest ||
       !activeServer ||
+      activeServer.providerId === "web" ||
       event.sender !== guest.webContents ||
       event.senderFrame !== guest.webContents.mainFrame
     )

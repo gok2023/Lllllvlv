@@ -50,8 +50,8 @@ it("uses an app dialog and does not remove a server when cancelled", async () =>
   await act(async () => trigger.click());
   const dialog = document.querySelector('[role="alertdialog"]')!;
   expect(dialog.textContent).not.toContain("https://media.test");
-  expect(dialog.textContent).toContain("移除服务器？");
-  expect(dialog.textContent).toContain("不会删除服务器中的媒体");
+  expect(dialog.textContent).toContain("移除服务？");
+  expect(dialog.textContent).toContain("不会删除服务中的媒体");
   const cancel = [...dialog.querySelectorAll("button")].find(
     (button) => button.textContent === "取消",
   )!;
@@ -80,7 +80,7 @@ it("performs exactly the selected action after confirmation", async () => {
   expect(onEdit).not.toHaveBeenCalled();
 });
 it("edits from row content and the provider icon while Open remains a separate action", async () => {
-  const edit = container.querySelector<HTMLButtonElement>('button[aria-label^="编辑服务器"]')!;
+  const edit = container.querySelector<HTMLButtonElement>('button[aria-label^="编辑服务"]')!;
   await act(async () => edit.querySelector("span")!.click());
   expect(onEdit).toHaveBeenCalledOnce();
   expect(onOpen).not.toHaveBeenCalled();

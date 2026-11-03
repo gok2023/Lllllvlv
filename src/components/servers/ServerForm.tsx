@@ -42,7 +42,9 @@ export function ServerForm({
   const [name, setName] = useState(server.name ?? "");
   const [url, setUrl] = useState(server.url ?? "");
   const [providerId, setProviderId] = useState(server.providerId ?? providers[0]?.id ?? "emby");
+  const isWeb = providerId === "web";
   const supportsCredentials =
+    !isWeb &&
     providers.find((provider) => provider.id === providerId)?.supportsCredentials !== false;
   const [usernameDraft, setUsername] = useState<string>();
   const [passwordDraft, setPassword] = useState<string>();
@@ -191,9 +193,11 @@ export function ServerForm({
           type="text"
           inputMode="url"
           placeholder={
-            providerId === "plex"
-              ? "http://192.168.1.10:32400"
-              : `https://${providerId}.example.com`
+            isWeb
+              ? "https://example.com/path"
+              : providerId === "plex"
+                ? "http://192.168.1.10:32400"
+                : `https://${providerId}.example.com`
           }
           value={url}
           onChange={(event) => {
@@ -268,39 +272,41 @@ export function ServerForm({
             {t(credentialsAvailable ? "credentialsHint" : "credentialsUnavailable")}
           </p>
         </div>
-      ) : (
+      ) : !isWeb ? (
         <p className="mt-4 text-xs text-muted-foreground">{t("plexWebSignIn")}</p>
-      )}
+      ) : null}
       <div className="mt-4 flex flex-col gap-3 @min-[24rem]:flex-row @min-[24rem]:items-center">
-        <div className="flex h-12 min-w-0 flex-1 items-center gap-3" aria-busy={testing}>
-          <Button
-            variant="outline"
-            type="button"
-            name="test-connection"
-            className="shrink-0"
-            onClick={(event) => {
-              if (event.currentTarget.form?.reportValidity()) void checkConnection();
-            }}
-            disabled={saving || loadingCredentials || testing || !url.trim()}
-          >
-            {testing && <LoaderCircle size={15} className="animate-spin" />}
-            {t(testing ? "testingConnection" : "testConnection")}
-          </Button>
-          <div className="max-h-full min-w-0 flex-1 overflow-y-auto">
-            {connectionMessage && (
-              <p
-                role={connectionError ? "alert" : "status"}
-                className={`text-xs wrap-anywhere ${connectionError ? "text-destructive" : "text-primary"}`}
-              >
-                {connectionMessage}
-              </p>
-            )}
-            {connectionNotice && (
-              <p className="mt-1 text-xs text-muted-foreground">{connectionNotice}</p>
-            )}
+        {!isWeb && (
+          <div className="flex h-12 min-w-0 flex-1 items-center gap-3" aria-busy={testing}>
+            <Button
+              variant="outline"
+              type="button"
+              name="test-connection"
+              className="shrink-0"
+              onClick={(event) => {
+                if (event.currentTarget.form?.reportValidity()) void checkConnection();
+              }}
+              disabled={saving || loadingCredentials || testing || !url.trim()}
+            >
+              {testing && <LoaderCircle size={15} className="animate-spin" />}
+              {t(testing ? "testingConnection" : "testConnection")}
+            </Button>
+            <div className="max-h-full min-w-0 flex-1 overflow-y-auto">
+              {connectionMessage && (
+                <p
+                  role={connectionError ? "alert" : "status"}
+                  className={`text-xs wrap-anywhere ${connectionError ? "text-destructive" : "text-primary"}`}
+                >
+                  {connectionMessage}
+                </p>
+              )}
+              {connectionNotice && (
+                <p className="mt-1 text-xs text-muted-foreground">{connectionNotice}</p>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 justify-end gap-2">
+        )}
+        <div className="ml-auto flex shrink-0 justify-end gap-2">
           <Button variant="outline" type="button" onClick={onCancel}>
             {t("cancel")}
           </Button>

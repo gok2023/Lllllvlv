@@ -40,7 +40,12 @@ export function ServerManagementRow({
         >
           <ExternalLink size={16} />
         </Button>
-        <ServerActions disabled={disabled} onRemove={onRemove} onSignOut={onSignOut} />
+        <ServerActions
+          disabled={disabled}
+          onRemove={onRemove}
+          onSignOut={onSignOut}
+          showSignOut={server.providerId !== "web"}
+        />
       </ServerRow>
     </li>
   );

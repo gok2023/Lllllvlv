@@ -57,7 +57,7 @@ describe("localized errors", () => {
         `Error invoking remote method 'app:save-server': Error: ${new UserFacingError("serverDuplicate").message}`,
       ),
     ).toBe(
-      "This server has already been added. Open it from Home or edit the existing server in Settings.",
+      "This service has already been added. Open it from Home or edit the existing service in Settings.",
     );
   });
 });

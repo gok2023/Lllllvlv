@@ -23,6 +23,18 @@ export function normalizeServerUrl(input: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+export function normalizeWebServiceUrl(input: string): string {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new UserFacingError("invalidUrl");
+  }
+  if (!["https:", "http:"].includes(url.protocol) || !url.hostname || url.username || url.password)
+    throw new UserFacingError("invalidUrl");
+  return input.trim();
+}
+
 export const defaultSettings: Settings = {
   servers: [],
   players: [],
@@ -36,15 +48,23 @@ export const defaultSettings: Settings = {
   remindOnClose: true,
 };
 
-const serverSchema = z.object({
-  id: z.uuid(),
-  providerId: z
-    .string()
-    .regex(/^[a-z][a-z0-9-]*$/)
-    .default("emby"),
-  name: z.string().trim().max(100).default(""),
-  url: z.string().transform(normalizeServerUrl),
-});
+const serverSchema = z
+  .object({
+    id: z.uuid(),
+    providerId: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]*$/)
+      .default("emby"),
+    name: z.string().trim().max(100).default(""),
+    url: z.string(),
+  })
+  .transform((server) => ({
+    ...server,
+    url:
+      server.providerId === "web"
+        ? normalizeWebServiceUrl(server.url)
+        : normalizeServerUrl(server.url),
+  }));
 const playerSchema = z.object({
   id: z.string(),
   name: z.string(),

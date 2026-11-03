@@ -17,10 +17,12 @@ export function ServerActions({
   onRemove,
   onSignOut,
   disabled,
+  showSignOut = true,
 }: {
   onRemove: () => void;
   onSignOut: () => void;
   disabled: boolean;
+  showSignOut?: boolean;
 }) {
   const { t } = useAppTranslation();
   const [action, setAction] = useState<"remove" | "sign-out" | null>(null);
@@ -32,18 +34,20 @@ export function ServerActions({
         if (!open) setAction(null);
       }}
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={t("signOut")}
-        title={t("signOut")}
-        disabled={disabled}
-        onClick={() => {
-          setAction("sign-out");
-        }}
-      >
-        <LogOut size={16} />
-      </Button>
+      {showSignOut && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("signOut")}
+          title={t("signOut")}
+          disabled={disabled}
+          onClick={() => {
+            setAction("sign-out");
+          }}
+        >
+          <LogOut size={16} />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon"
