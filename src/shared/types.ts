@@ -249,7 +249,10 @@ export interface DesktopAPI {
   ): Promise<AppState>;
   control(this: void, control: PlaybackControl): Promise<void>;
   surfaceReady(this: void, surface: "servers" | "playback"): Promise<void>;
-  navigate(this: void, action: "back" | "forward" | "reload" | "stop" | "home"): Promise<void>;
+  navigate(
+    this: void,
+    action: "back" | "forward" | "reload" | "forceReload" | "stop" | "home",
+  ): Promise<void>;
   resetSession(this: void, id: string): Promise<AppState>;
   openGuide(this: void, kind: PlayerKind): Promise<void>;
   exportDiagnostics(this: void): Promise<string | null>;

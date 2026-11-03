@@ -893,19 +893,22 @@ function setupIPC() {
     await playback.control(controlSchema.parse(input));
   });
   handle("app:navigate", (input) => {
-    const action = z.enum(["back", "forward", "reload", "stop", "home"]).parse(input);
+    const action = z
+      .enum(["back", "forward", "reload", "forceReload", "stop", "home"])
+      .parse(input);
     if (!guest || !activeServer) return;
     if (action === "home")
       void guest.webContents.loadURL(
         providers.get(activeServer.providerId).entryUrl(activeServer, true),
       );
-    else if (action === "reload") {
+    else if (action === "reload" || action === "forceReload") {
       webError = undefined;
       webStatus = "loading";
       bootstrapRetries = 0;
       layout();
       publish();
-      guest.webContents.reload();
+      if (action === "forceReload") guest.webContents.reloadIgnoringCache();
+      else guest.webContents.reload();
     } else if (action === "stop") {
       guest.webContents.stop();
       if (webStatus !== "error") webStatus = "ready";

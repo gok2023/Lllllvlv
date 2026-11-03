@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  RefreshCcwDot,
   Settings2,
   X,
 } from "lucide-react";
@@ -240,6 +241,16 @@ export function BrowserShell() {
               }
             >
               {loadingPage ? <X size={18} /> : <RefreshCw size={17} />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("forceReload")}
+              title={t("forceReload")}
+              disabled={page !== "library"}
+              onClick={() => void run("navigation", (desktop) => desktop.navigate("forceReload"))}
+            >
+              <RefreshCcwDot size={17} />
             </Button>
             <Button
               variant="ghost"

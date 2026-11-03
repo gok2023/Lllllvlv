@@ -41,6 +41,7 @@ export const en = {
   back: "Back",
   forward: "Forward",
   reload: "Reload",
+  forceReload: "Reload without cache",
   home: "Server home",
   address: "Address",
   openSettings: "Open settings",

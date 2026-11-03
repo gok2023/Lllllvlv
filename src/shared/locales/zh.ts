@@ -39,6 +39,7 @@ export const zh = {
   back: "后退",
   forward: "前进",
   reload: "重新加载",
+  forceReload: "强制刷新（忽略缓存）",
   home: "服务器首页",
   address: "地址",
   openSettings: "打开设置",
