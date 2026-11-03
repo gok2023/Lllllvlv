@@ -74,12 +74,12 @@ describe("Windows native player lifecycle", () => {
       item.subtitleUrl,
       "/fullscreen",
     ]);
-    expect(windowsPlayerArgs({ ...player, kind: "potplayer" }, item, false, "123")).toContain(
+    expect(windowsPlayerArgs({ ...player, kind: "potplayer" }, item, false, "123")).toEqual([
+      item.url,
+      "/new",
       "/seek=00:00:42",
-    );
-    expect(windowsPlayerArgs({ ...player, kind: "potplayer" }, item, false, "123")).toContain(
-      `/title=${item.item.title}`,
-    );
+      `/sub=${item.subtitleUrl}`,
+    ]);
   });
   it.each(["mpc-hc", "mpc-be", "potplayer"] as const)(
     "waits for %s media and reads the final position before stop",

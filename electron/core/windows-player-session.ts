@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { UserFacingError, errorToken } from "../../src/shared/i18n";
 import type { Player, PreparedMedia, PlaybackControl } from "../../src/shared/types";
-import { title, type PlayerSnapshot } from "./player-session";
+import { type PlayerSnapshot } from "./player-session";
 import { WindowsNativeBridge, type NativeBridge, type NativeStatus } from "./windows-native";
 
 export function windowsPlayerArgs(
@@ -20,7 +20,6 @@ export function windowsPlayerArgs(
       media.url,
       "/new",
       `/seek=${time}`,
-      `/title=${title(media)}`,
       ...(media.subtitleUrl ? [`/sub=${media.subtitleUrl}`] : []),
       ...(fullscreen ? ["/fullscreen"] : []),
     ];

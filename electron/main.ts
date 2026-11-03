@@ -113,7 +113,7 @@ function locale() {
 function t(key: MessageKey, params?: Record<string, string | number>) {
   return translate(locale(), key, params);
 }
-const proxy = new MediaProxy();
+const proxy = new MediaProxy((message) => log(message));
 let window: BrowserWindow;
 let guest: WebContentsView | undefined;
 let shown = false;
@@ -1041,7 +1041,7 @@ function setupIPC() {
       }
       media.url = proxy.register(media.url, fetcher, media.headers);
       if (media.subtitleUrl)
-        media.subtitleUrl = proxy.register(media.subtitleUrl, fetcher, media.headers);
+        media.subtitleUrl = proxy.register(media.subtitleUrl, fetcher, media.headers, "subtitle");
       media.headers = {};
       return media;
     };

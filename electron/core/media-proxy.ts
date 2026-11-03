@@ -8,10 +8,20 @@ import type { Fetcher } from "../providers/types";
 export class MediaProxy {
   private server?: Server;
   private port = 0;
+  private nextRouteId = 0;
   private routes = new Map<
     string,
-    { url: string; fetcher: Fetcher; headers: Record<string, string> }
+    {
+      url: string;
+      fetcher: Fetcher;
+      headers: Record<string, string>;
+      kind: "media" | "subtitle";
+      id: number;
+      loggedRequest: boolean;
+      loggedSuccess: boolean;
+    }
   >();
+  constructor(private readonly diagnostic: (message: string) => void = () => {}) {}
   async open(): Promise<void> {
     this.server = createServer(async (request, response) => {
       const route = this.routes.get((request.url ?? "").split("?")[0]);
@@ -20,8 +30,14 @@ export class MediaProxy {
         !["GET", "HEAD"].includes(request.method ?? "") ||
         !["127.0.0.1", "::ffff:127.0.0.1"].includes(request.socket.remoteAddress ?? "")
       ) {
+        if (!route && (request.url ?? "").startsWith("/media/"))
+          this.diagnostic("Media proxy route missing");
         response.writeHead(404).end();
         return;
+      }
+      if (!route.loggedRequest) {
+        route.loggedRequest = true;
+        this.diagnostic(`Media proxy ${route.kind} #${route.id} ${request.method} received`);
       }
       const controller = new AbortController();
       response.on("close", () => controller.abort());
@@ -35,6 +51,16 @@ export class MediaProxy {
           ...(Object.keys(route.headers).length ? { redirect: "error" as const } : {}),
           signal: controller.signal,
         });
+        if (!upstream.ok)
+          this.diagnostic(
+            `Media proxy ${route.kind} #${route.id} ${request.method} upstream HTTP ${upstream.status}`,
+          );
+        else if (!route.loggedSuccess) {
+          route.loggedSuccess = true;
+          this.diagnostic(
+            `Media proxy ${route.kind} #${route.id} ${request.method} upstream HTTP ${upstream.status}`,
+          );
+        }
         const forwarded: Record<string, string> = {};
         // Fetch decodes compressed bodies; the upstream length describes encoded bytes.
         const encoding = upstream.headers.get("content-encoding");
@@ -57,7 +83,15 @@ export class MediaProxy {
             Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream),
             response,
           );
-      } catch {
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          const code = (error as NodeJS.ErrnoException | null)?.code;
+          const safeCode =
+            typeof code === "string" && /^[A-Z][A-Z0-9_]{1,29}$/.test(code) ? ` ${code}` : "";
+          this.diagnostic(
+            `Media proxy ${route.kind} #${route.id} ${request.method} ${response.headersSent ? "stream" : "fetch"} failed: ${error instanceof Error ? error.name : "unknown"}${safeCode}`,
+          );
+        }
         if (!response.headersSent) response.writeHead(502).end("Media connection failed");
         else response.destroy();
       }
@@ -71,9 +105,24 @@ export class MediaProxy {
       });
     });
   }
-  register(url: string, fetcher: Fetcher, headers: Record<string, string> = {}): string {
+  register(
+    url: string,
+    fetcher: Fetcher,
+    headers: Record<string, string> = {},
+    kind: "media" | "subtitle" = "media",
+  ): string {
     const key = `/media/${randomBytes(24).toString("hex")}`;
-    this.routes.set(key, { url, fetcher, headers });
+    const id = ++this.nextRouteId;
+    this.routes.set(key, {
+      url,
+      fetcher,
+      headers,
+      kind,
+      id,
+      loggedRequest: false,
+      loggedSuccess: false,
+    });
+    this.diagnostic(`Media proxy ${kind} #${id} registered`);
     return `http://127.0.0.1:${this.port}${key}`;
   }
   clear(): void {
