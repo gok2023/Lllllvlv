@@ -47,6 +47,8 @@ export const defaultSettings: Settings = {
   runInBackground: true,
   remindOnClose: true,
   startupVideoEnabled: false,
+  startupVideoSoundEnabled: false,
+  startupVideoVolume: 50,
 };
 
 const serverSchema = z
@@ -99,6 +101,8 @@ export const settingsSchema = z.object({
   runInBackground: z.boolean().default(defaultSettings.runInBackground),
   remindOnClose: z.boolean().default(defaultSettings.remindOnClose),
   startupVideoEnabled: z.boolean().default(defaultSettings.startupVideoEnabled),
+  startupVideoSoundEnabled: z.boolean().default(defaultSettings.startupVideoSoundEnabled),
+  startupVideoVolume: z.number().min(0).max(100).default(defaultSettings.startupVideoVolume),
   startupVideoName: z.string().optional(),
   startupVideoFile: z.string().regex(/^[0-9a-f-]{36}\.(mp4|webm)$/).optional(),
 });

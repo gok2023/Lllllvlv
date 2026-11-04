@@ -97,6 +97,7 @@ const store = new SettingsStore(join(userDataPath, "settings.json"), (event) => 
 const windowStateStore = new WindowStateStore(join(userDataPath, "window-state.json"));
 const startupVideoDirectory = join(userDataPath, "startup-video");
 let startupVideoAvailable = true;
+let startupVideoFullscreen = false;
 let startupVideoMutation: Promise<unknown> = Promise.resolve();
 function mutateStartupVideo<T>(action: () => Promise<T>): Promise<T> {
   const result = startupVideoMutation.then(action, action);
@@ -166,6 +167,16 @@ function t(key: MessageKey, params?: Record<string, string | number>) {
 }
 const proxy = new MediaProxy((message) => log(message));
 let window: BrowserWindow;
+function finishStartupVideo() {
+  if (!startupVideoFullscreen || !window || window.isDestroyed()) return;
+  startupVideoFullscreen = false;
+  if (window.isFullScreen()) {
+    window.once("leave-full-screen", () => {
+      if (!window.isDestroyed()) window.maximize();
+    });
+    window.setFullScreen(false);
+  } else window.maximize();
+}
 let guest: WebContentsView | undefined;
 let shown = false;
 let page: AppPage = "home";
@@ -705,16 +716,38 @@ function setupIPC() {
       }
     });
   handle("app:state", () => state());
+  handle("app:restart", async () => {
+    if (lifecycle.isQuitting) return;
+    await lifecycle.prepareToQuit();
+    if (process.env.FREEBO_DEV_URL) app.exit(42);
+    else {
+      app.relaunch();
+      app.quit();
+    }
+  });
   handle("app:get-startup-video", async () => {
-    if (!startupVideoAvailable) return null;
+    if (!startupVideoAvailable) {
+      finishStartupVideo();
+      return null;
+    }
     startupVideoAvailable = false;
     const path = startupVideoPath();
-    if (!store.value.startupVideoEnabled || !path) return null;
+    if (!store.value.startupVideoEnabled || !path) {
+      finishStartupVideo();
+      return null;
+    }
     try {
-      if (!(await stat(path)).isFile()) return null;
+      if (!(await stat(path)).isFile()) {
+        finishStartupVideo();
+        return null;
+      }
       return "freebo-startup://video/current";
-    } catch { return null; }
+    } catch {
+      finishStartupVideo();
+      return null;
+    }
   });
+  handle("app:startup-video-done", finishStartupVideo);
   handle("app:choose-startup-video", async () => {
     const result = await dialog.showOpenDialog(window, {
       properties: ["openFile"],
@@ -984,6 +1017,8 @@ function setupIPC() {
         runInBackground: z.boolean().optional(),
         remindOnClose: z.boolean().optional(),
         startupVideoEnabled: z.boolean().optional(),
+        startupVideoSoundEnabled: z.boolean().optional(),
+        startupVideoVolume: z.number().min(0).max(100).optional(),
       })
       .strict()
       .parse(input);
@@ -1475,12 +1510,21 @@ void app.whenReady().then(async () => {
   await proxy.open();
   nativeTheme.themeSource = store.value.theme;
   page = store.value.setupCompleted ? "home" : "setup";
+  const launchVideoPath = startupVideoPath();
+  if (store.value.fullscreen && store.value.startupVideoEnabled && launchVideoPath) {
+    try {
+      startupVideoFullscreen = (await stat(launchVideoPath)).isFile();
+    } catch {
+      startupVideoFullscreen = false;
+    }
+  }
   const savedWindow = windowStateStore.load();
   const bounds = savedWindow
     ? fitWindowBounds(savedWindow.bounds, screen.getDisplayMatching(savedWindow.bounds).workArea)
     : defaultWindowSize;
   window = new BrowserWindow({
     ...bounds,
+    fullscreen: startupVideoFullscreen,
     minWidth: minimumWindowSize.width,
     minHeight: minimumWindowSize.height,
     title: t("brand"),
@@ -1503,7 +1547,7 @@ void app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   });
-  if (savedWindow?.maximized) window.maximize();
+  if (!startupVideoFullscreen && (store.value.fullscreen || savedWindow?.maximized)) window.maximize();
   let windowStateTimer: ReturnType<typeof setTimeout> | undefined;
   const saveWindowState = () => {
     clearTimeout(windowStateTimer);
@@ -1580,6 +1624,9 @@ void app.whenReady().then(async () => {
   nativeTheme.on("updated", updateChrome);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("did-fail-load", (_event, _code, _description, _url, isMainFrame) => {
+    if (isMainFrame) finishStartupVideo();
+  });
   if (process.env.FREEBO_DEV_URL) await window.loadURL(process.env.FREEBO_DEV_URL);
   else await window.loadFile(join(__dirname, "../dist/index.html"));
   instance.windowReady();

@@ -17,6 +17,8 @@ export type SettingsPatch = Partial<
     | "runInBackground"
     | "remindOnClose"
     | "startupVideoEnabled"
+    | "startupVideoSoundEnabled"
+    | "startupVideoVolume"
   >
 >;
 export function formatTime(value: number) {

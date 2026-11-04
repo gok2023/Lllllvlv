@@ -92,7 +92,9 @@ export const en = {
   startupVideoChoose: "Choose video",
   startupVideoReplace: "Replace video",
   startupVideoClear: "Clear video",
-  startupVideoSkip: "Skip",
+  startupVideoSkip: "Skip startup video",
+  startupVideoSound: "Play sound",
+  startupVideoVolume: "Startup video volume",
   startupVideoDrop: "Drop an MP4 or WebM here",
   runInBackgroundDescription:
     "Show a tray icon. When off, closing the window stops playback and quits Lllllvlv.",
@@ -124,6 +126,7 @@ export const en = {
   copiedDiagnostics: "Copied",
   reportIssue: "Report an issue",
   refreshDiagnostics: "Refresh",
+  restartApp: "Restart",
   diagnosticsDescription:
     "Check the environment, connection and playback sync. Saved credentials are excluded; links and access tokens in logs are hidden.",
   runtimeInfo: "Environment",

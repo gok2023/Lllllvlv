@@ -15,6 +15,7 @@ import "./style.css";
 
 const root = createRoot(document.getElementById("root")!);
 const api = window.desktop;
+const finishStartupVideo = () => { void api?.finishStartupVideo().catch(() => {}); };
 const systemLocale = resolveLocale("system", navigator.language);
 let cleanup: (() => void) | undefined;
 let stopped = false;
@@ -30,7 +31,10 @@ async function start() {
   }
   cleanup?.();
   const surface = new URLSearchParams(location.search).get("surface");
-  const startupVideo = surface === "servers" || surface === "playback" ? null : await api.getStartupVideo().catch(() => null);
+  const startupVideo = surface === "servers" || surface === "playback" ? null : await api.getStartupVideo().catch(() => {
+    finishStartupVideo();
+    return null;
+  });
   const runtime = createDesktopRuntime(api);
   cleanup = () => runtime.dispose();
   try {
@@ -56,13 +60,14 @@ async function start() {
         <QueryClientProvider client={runtime.queryClient}>
           <I18nextProvider i18n={i18n}>
             <RuntimeContext.Provider value={runtime}>
-              <StartupGate locale={initial.locale} source={startupVideo}><RouterProvider router={router} /></StartupGate>
+              <StartupGate locale={initial.locale} source={startupVideo} soundEnabled={initial.settings.startupVideoSoundEnabled} volume={initial.settings.startupVideoVolume} onFinish={finishStartupVideo}><RouterProvider router={router} /></StartupGate>
             </RuntimeContext.Provider>
           </I18nextProvider>
         </QueryClientProvider>
       </React.StrictMode>,
     );
   } catch (error) {
+    finishStartupVideo();
     runtime.dispose();
     if (!stopped)
       root.render(
@@ -75,11 +80,13 @@ async function start() {
   }
 }
 window.addEventListener("beforeunload", () => {
+  finishStartupVideo();
   stopped = true;
   cleanup?.();
 });
 if (import.meta.hot)
   import.meta.hot.dispose(() => {
+    finishStartupVideo();
     stopped = true;
     cleanup?.();
     root.unmount();

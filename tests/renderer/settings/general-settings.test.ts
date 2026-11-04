@@ -12,6 +12,11 @@ let container: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -20,6 +25,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
+  vi.unstubAllGlobals();
 });
 const toggle = (label: string) =>
   container.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!;

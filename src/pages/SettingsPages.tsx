@@ -9,11 +9,13 @@ import {
   Plus,
   RefreshCw,
   FolderOpen,
+  Volume2,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
+import { Slider } from "../components/ui/slider";
 import { OptionSelect } from "../components/shared/OptionSelect";
 import { SettingRow } from "../components/settings/SettingRow";
 import { PlayerSetup } from "../components/players/PlayerSetup";
@@ -242,6 +244,8 @@ export function PlayerEditorPage() {
 export function GeneralPage() {
   const { state, update, isPending, run } = useApp();
   const { t } = useAppTranslation();
+  const [videoVolume, setVideoVolume] = useState(state.settings.startupVideoVolume);
+  useEffect(() => setVideoVolume(state.settings.startupVideoVolume), [state.settings.startupVideoVolume]);
   return (
     <>
       <Heading title={t("general")} />
@@ -269,7 +273,7 @@ export function GeneralPage() {
           ]}
         />
       </SettingRow>
-      <SettingRow title={t("startupVideo")} description={t("startupVideoDescription")}>
+      <SettingRow title={t("startupVideo")}>
         <div className="flex flex-wrap items-center justify-end gap-2 rounded-md border border-dashed p-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
           event.preventDefault();
           const file = event.dataTransfer.files[0];
@@ -281,6 +285,16 @@ export function GeneralPage() {
           </Button>
           {state.settings.startupVideoName && <><span className="max-w-52 truncate text-sm" title={state.settings.startupVideoName}>{state.settings.startupVideoName}</span><Button variant="ghost" disabled={isPending("settings")} onClick={() => void run("settings", (api) => api.clearStartupVideo())}>{t("startupVideoClear")}</Button></>}
           <span className="w-full text-right text-xs text-muted-foreground">{t("startupVideoDrop")}</span>
+        </div>
+      </SettingRow>
+      <SettingRow title={t("startupVideoSound")}>
+        <Switch aria-label={t("startupVideoSound")} checked={state.settings.startupVideoSoundEnabled} disabled={!state.settings.startupVideoEnabled || isPending("settings")} onCheckedChange={(checked) => update({ startupVideoSoundEnabled: checked })} />
+      </SettingRow>
+      <SettingRow title={t("startupVideoVolume")}>
+        <div className="flex w-56 items-center gap-3">
+          <Volume2 className="size-4 shrink-0 text-muted-foreground" />
+          <Slider aria-label={t("startupVideoVolume")} value={[videoVolume]} min={0} max={100} step={5} disabled={!state.settings.startupVideoEnabled || !state.settings.startupVideoSoundEnabled || isPending("settings")} onValueChange={([value]) => setVideoVolume(value)} onValueCommit={([value]) => update({ startupVideoVolume: value })} />
+          <span className="w-10 text-right text-sm tabular-nums">{videoVolume}%</span>
         </div>
       </SettingRow>
       <SettingRow title={t("runInBackground")} description={t("runInBackgroundDescription")}>

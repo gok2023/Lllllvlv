@@ -73,6 +73,8 @@ export interface Settings {
   runInBackground: boolean;
   remindOnClose: boolean;
   startupVideoEnabled: boolean;
+  startupVideoSoundEnabled: boolean;
+  startupVideoVolume: number;
   startupVideoName?: string;
   startupVideoFile?: string;
 }
@@ -238,6 +240,8 @@ export interface DesktopAPI {
   startupVideoPath(this: void, file: File): string;
   clearStartupVideo(this: void): Promise<AppState>;
   getStartupVideo(this: void): Promise<string | null>;
+  finishStartupVideo(this: void): Promise<void>;
+  restartApp(this: void): Promise<void>;
   saveCustomPlayer(this: void, player: CustomPlayerInput): Promise<AppState>;
   updateSettings(
     this: void,
@@ -253,6 +257,8 @@ export interface DesktopAPI {
         | "runInBackground"
         | "remindOnClose"
         | "startupVideoEnabled"
+        | "startupVideoSoundEnabled"
+        | "startupVideoVolume"
       >
     >,
   ): Promise<AppState>;

@@ -3,7 +3,7 @@ import { useRuntime } from "../../runtime/context";
 import { diagnosticsKey } from "../../runtime/desktop";
 import { useAppTranslation } from "../../i18n";
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, Copy, Download, ExternalLink, FolderOpen, RefreshCw } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, FolderOpen, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "../ui/button";
 import { PlayerIcon } from "../shared/IntegrationIcon";
 import { localizeError, type MessageKey } from "../../shared/i18n";
@@ -99,6 +99,10 @@ export function DiagnosticsPanel({ state, run }: { state: AppState; run: RunActi
               className={refreshing ? "animate-spin motion-reduce:animate-none" : ""}
             />
             {t("refreshDiagnostics")}
+          </Button>
+          <Button variant="ghost" onClick={() => void run("restart", (desktop) => desktop.restartApp())}>
+            <RotateCcw size={15} />
+            {t("restartApp")}
           </Button>
         </div>
         <span className="sr-only" role="status">

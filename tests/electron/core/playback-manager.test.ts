@@ -24,6 +24,8 @@ const settings: Settings = {
   runInBackground: true,
   remindOnClose: true,
   startupVideoEnabled: false,
+  startupVideoSoundEnabled: false,
+  startupVideoVolume: 50,
 };
 const media = (id: string): PreparedMedia => ({
   item: { id, title: id },

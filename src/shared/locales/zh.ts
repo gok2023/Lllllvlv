@@ -89,7 +89,9 @@ export const zh = {
   startupVideoChoose: "选择视频",
   startupVideoReplace: "更换视频",
   startupVideoClear: "清除视频",
-  startupVideoSkip: "跳过",
+  startupVideoSkip: "跳过启动视频",
+  startupVideoSound: "播放声音",
+  startupVideoVolume: "启动视频音量",
   startupVideoDrop: "将 MP4 或 WebM 拖到此处",
   runInBackgroundDescription: "显示托盘图标。关闭此项后，关窗会停止播放并退出 Lllllvlv。",
   remindOnClose: "关闭窗口时提醒",
@@ -117,6 +119,7 @@ export const zh = {
   copiedDiagnostics: "已复制",
   reportIssue: "反馈问题",
   refreshDiagnostics: "刷新",
+  restartApp: "重启",
   diagnosticsDescription:
     "查看运行环境、连接状态和播放进度回传结果。诊断不包含保存的账号密码，日志中的链接与访问令牌会隐藏。",
   runtimeInfo: "运行环境",
