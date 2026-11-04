@@ -110,6 +110,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
       "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}"
     },
     "linux": {
