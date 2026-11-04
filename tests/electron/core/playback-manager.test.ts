@@ -23,6 +23,7 @@ const settings: Settings = {
   playerScanCompleted: true,
   runInBackground: true,
   remindOnClose: true,
+  startupVideoEnabled: false,
 };
 const media = (id: string): PreparedMedia => ({
   item: { id, title: id },

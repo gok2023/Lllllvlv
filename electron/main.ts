@@ -14,13 +14,16 @@ import {
   Tray,
   nativeImage,
   Notification,
+  protocol,
+  net,
   type IpcMainInvokeEvent,
 } from "electron";
-import { join } from "node:path";
+import { join, extname, basename } from "node:path";
+import { pathToFileURL } from "node:url";
 import { release } from "node:os";
-import { writeFile, access, mkdir } from "node:fs/promises";
+import { writeFile, access, mkdir, copyFile, rename, unlink, stat } from "node:fs/promises";
 import { constants, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   browserUserAgent,
   browserDeviceName,
@@ -59,6 +62,7 @@ import {
 } from "../src/shared/i18n";
 import { MediaProxy } from "./core/media-proxy";
 import type { AppState, AppPage, SettingsPage, Platform, Server } from "../src/shared/types";
+import { showProductLinks } from "../src/shared/product-links";
 import { redact } from "./core/redact";
 import { CredentialStore, credentialsSchema, credentialOriginMatches } from "./core/credentials";
 import { loadFavicon } from "./core/favicon";
@@ -68,7 +72,11 @@ import { AppLifecycle } from "./core/app-lifecycle";
 import { UpdateManager, hasMacUpdateSignature, updateDisabledReason } from "./core/updates";
 import { autoUpdater } from "electron-updater";
 
-app.setName("Freebo");
+protocol.registerSchemesAsPrivileged([
+  { scheme: "freebo-startup", privileges: { standard: true, secure: true, stream: true } },
+]);
+
+app.setName("Lllllvlv");
 const userDataPath =
   !app.isPackaged && process.env.FREEBO_USER_DATA_DIR
     ? process.env.FREEBO_USER_DATA_DIR
@@ -87,6 +95,47 @@ const store = new SettingsStore(join(userDataPath, "settings.json"), (event) => 
     );
 });
 const windowStateStore = new WindowStateStore(join(userDataPath, "window-state.json"));
+const startupVideoDirectory = join(userDataPath, "startup-video");
+let startupVideoAvailable = true;
+let startupVideoMutation: Promise<unknown> = Promise.resolve();
+function mutateStartupVideo<T>(action: () => Promise<T>): Promise<T> {
+  const result = startupVideoMutation.then(action, action);
+  startupVideoMutation = result.catch(() => {});
+  return result;
+}
+function startupVideoPath() {
+  const name = store.value.startupVideoFile;
+  return name ? join(startupVideoDirectory, name) : undefined;
+}
+async function setStartupVideo(source: string) {
+  const extension = extname(source).toLowerCase();
+  if (extension !== ".mp4" && extension !== ".webm") throw new UserFacingError("invalidInput");
+  if (!(await stat(source)).isFile()) throw new UserFacingError("invalidInput");
+  await mkdir(startupVideoDirectory, { recursive: true });
+  const targetName = `${randomUUID()}${extension}`;
+  const target = join(startupVideoDirectory, targetName);
+  const temporary = join(startupVideoDirectory, `${randomUUID()}.tmp`);
+  try {
+    await copyFile(source, temporary);
+    const previous = startupVideoPath();
+    const previousName = store.value.startupVideoName;
+    const previousFile = store.value.startupVideoFile;
+    await rename(temporary, target);
+    try {
+      await store.save({ ...store.value, startupVideoFile: targetName, startupVideoName: basename(source) });
+    } catch (error) {
+      if (store.value.startupVideoFile === targetName) {
+        store.value.startupVideoFile = previousFile;
+        store.value.startupVideoName = previousName;
+      }
+      await unlink(target).catch(() => {});
+      throw error;
+    }
+    if (previous && previous !== target) await unlink(previous).catch(() => {});
+  } finally {
+    await unlink(temporary).catch(() => {});
+  }
+}
 const credentials = new CredentialStore(join(userDataPath, "credentials.json"), {
   available: async () => {
     if (!(await safeStorage.isAsyncEncryptionAvailable())) return false;
@@ -197,7 +246,7 @@ function state(): AppState {
     playback: playback.state,
     platform: process.platform as Platform,
     version: app.getVersion(),
-    updates: updates?.state ?? { status: "disabled", reason: "development" },
+    updates: updates?.state ?? { status: "disabled", reason: "fork-disabled" },
     webStatus,
     webError,
     credentialsAvailable,
@@ -656,6 +705,50 @@ function setupIPC() {
       }
     });
   handle("app:state", () => state());
+  handle("app:get-startup-video", async () => {
+    if (!startupVideoAvailable) return null;
+    startupVideoAvailable = false;
+    const path = startupVideoPath();
+    if (!store.value.startupVideoEnabled || !path) return null;
+    try {
+      if (!(await stat(path)).isFile()) return null;
+      return "freebo-startup://video/current";
+    } catch { return null; }
+  });
+  handle("app:choose-startup-video", async () => {
+    const result = await dialog.showOpenDialog(window, {
+      properties: ["openFile"],
+      filters: [{ name: "Video", extensions: ["mp4", "webm"] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    await mutateStartupVideo(() => setStartupVideo(result.filePaths[0]));
+    publish();
+    return state();
+  });
+  handle("app:set-startup-video", async (input) => {
+    await mutateStartupVideo(() => setStartupVideo(z.string().min(1).parse(input)));
+    publish();
+    return state();
+  });
+  handle("app:clear-startup-video", async () => {
+    await mutateStartupVideo(async () => {
+      const previous = startupVideoPath();
+      const previousFile = store.value.startupVideoFile;
+      const previousName = store.value.startupVideoName;
+      try {
+        await store.save({ ...store.value, startupVideoFile: undefined, startupVideoName: undefined });
+      } catch (error) {
+        if (store.value.startupVideoFile === undefined && store.value.startupVideoName === undefined) {
+          store.value.startupVideoFile = previousFile;
+          store.value.startupVideoName = previousName;
+        }
+        throw error;
+      }
+      if (previous) await unlink(previous).catch(() => {});
+    });
+    publish();
+    return state();
+  });
   ipcMain.handle("app:surface-ready", (event, input) => {
     own(event);
     const surface = z.enum(["servers", "playback"]).parse(input);
@@ -890,6 +983,7 @@ function setupIPC() {
         setupCompleted: z.boolean().optional(),
         runInBackground: z.boolean().optional(),
         remindOnClose: z.boolean().optional(),
+        startupVideoEnabled: z.boolean().optional(),
       })
       .strict()
       .parse(input);
@@ -969,6 +1063,7 @@ function setupIPC() {
     await clipboard.writeText(JSON.stringify(getDiagnostics(), null, 2));
   });
   handle("app:open-link", async (input) => {
+    if (!showProductLinks && (input === "product" || input === "github")) return;
     await shell.openExternal(
       productLink(z.enum(["product", "github", "issue"]).parse(input), getDiagnostics()),
     );
@@ -1213,10 +1308,9 @@ function createTray() {
       "tray",
     );
     const image = nativeImage.createFromPath(
-      join(directory, process.platform === "darwin" ? "trayTemplate.png" : "trayColor.png"),
+      join(directory, "trayColor.png"),
     );
     if (image.isEmpty()) throw new Error("Tray icon is missing");
-    if (process.platform === "darwin") image.setTemplateImage(true);
     tray = new Tray(image);
     tray.on("click", showMainWindow);
     tray.on("double-click", showMainWindow);
@@ -1282,8 +1376,10 @@ async function closeToBackground() {
   }
 }
 async function setupUpdates() {
+  // Keep the upstream updater integration available for a future release.
+  const upstreamUpdatesEnabled = false;
   const packageType = join(process.resourcesPath, "package-type");
-  const reason = updateDisabledReason({
+  const reason = !upstreamUpdatesEnabled ? "fork-disabled" : updateDisabledReason({
     packaged: app.isPackaged,
     platform: process.platform as Platform,
     portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE),
@@ -1331,14 +1427,16 @@ async function setupUpdates() {
   });
   ipcMain.handle("app:check-updates", (event) => {
     own(event);
-    if (!lifecycle.isQuitting) return updates?.check();
+    if (reason !== "fork-disabled" && !lifecycle.isQuitting) return updates?.check();
   });
   ipcMain.handle("app:install-update", (event) => {
     own(event);
-    if (!lifecycle.isQuitting) return updates?.install(() => lifecycle.prepareToQuit());
+    if (reason !== "fork-disabled" && !lifecycle.isQuitting)
+      return updates?.install(() => lifecycle.prepareToQuit());
   });
   ipcMain.handle("app:open-releases", (event) => {
     own(event);
+    if (reason === "fork-disabled") return;
     return shell.openExternal("https://github.com/elonzh/freebo/releases/latest");
   });
   buildTrayMenu();
@@ -1361,6 +1459,13 @@ app.on("web-contents-created", (_event, contents) => {
 void app.whenReady().then(async () => {
   if (!instance.primary) return;
   await store.load();
+  protocol.handle("freebo-startup", (request) => {
+    const url = new URL(request.url);
+    if (url.host !== "video" || url.pathname !== "/current") return new Response(null, { status: 404 });
+    const path = startupVideoPath();
+    if (!path) return new Response(null, { status: 404 });
+    return net.fetch(pathToFileURL(path).toString(), { headers: request.headers });
+  });
   try {
     await credentials.load();
     credentialsAvailable = await credentials.available();

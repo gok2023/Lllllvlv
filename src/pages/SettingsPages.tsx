@@ -8,6 +8,7 @@ import {
   MonitorPlay,
   Plus,
   RefreshCw,
+  FolderOpen,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
@@ -25,6 +26,7 @@ import { UpdateSettings } from "../components/settings/UpdateSettings";
 import { useApp } from "../runtime/context";
 import { useAppTranslation } from "../i18n";
 import { settingsPaths } from "../routing";
+import { showProductLinks } from "../shared/product-links";
 
 const settingPages = [
   { id: "servers", icon: Globe2 },
@@ -238,7 +240,7 @@ export function PlayerEditorPage() {
   );
 }
 export function GeneralPage() {
-  const { state, update, isPending } = useApp();
+  const { state, update, isPending, run } = useApp();
   const { t } = useAppTranslation();
   return (
     <>
@@ -266,6 +268,20 @@ export function GeneralPage() {
             { value: "en", label: "English" },
           ]}
         />
+      </SettingRow>
+      <SettingRow title={t("startupVideo")} description={t("startupVideoDescription")}>
+        <div className="flex flex-wrap items-center justify-end gap-2 rounded-md border border-dashed p-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+          event.preventDefault();
+          const file = event.dataTransfer.files[0];
+          if (file) void run("settings", (api) => api.setStartupVideo(api.startupVideoPath(file)));
+        }}>
+          <Switch aria-label={t("startupVideo")} checked={state.settings.startupVideoEnabled} disabled={isPending("settings")} onCheckedChange={(checked) => update({ startupVideoEnabled: checked })} />
+          <Button variant="outline" disabled={isPending("settings")} onClick={() => void run("settings", (api) => api.chooseStartupVideo())}>
+            <FolderOpen className="size-4" />{t(state.settings.startupVideoName ? "startupVideoReplace" : "startupVideoChoose")}
+          </Button>
+          {state.settings.startupVideoName && <><span className="max-w-52 truncate text-sm" title={state.settings.startupVideoName}>{state.settings.startupVideoName}</span><Button variant="ghost" disabled={isPending("settings")} onClick={() => void run("settings", (api) => api.clearStartupVideo())}>{t("startupVideoClear")}</Button></>}
+          <span className="w-full text-right text-xs text-muted-foreground">{t("startupVideoDrop")}</span>
+        </div>
       </SettingRow>
       <SettingRow title={t("runInBackground")} description={t("runInBackgroundDescription")}>
         <Switch
@@ -305,22 +321,24 @@ export function AboutPage() {
       <div className="mt-6 flex flex-col items-start gap-5 [&_p]:mt-1.5">
         <BrandLogo width={230} />
         <p>v{state.version} · Apache-2.0</p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => void run("product", (api) => api.openLink("product"))}
-          >
-            {t("productPage")}
-            <ExternalLink size={14} />
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void run("github", (api) => api.openLink("github"))}
-          >
-            {t("githubRepository")}
-            <ExternalLink size={14} />
-          </Button>
-        </div>
+        {showProductLinks && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void run("product", (api) => api.openLink("product"))}
+            >
+              {t("productPage")}
+              <ExternalLink size={14} />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void run("github", (api) => api.openLink("github"))}
+            >
+              {t("githubRepository")}
+              <ExternalLink size={14} />
+            </Button>
+          </div>
+        )}
       </div>
       <UpdateSettings state={state} run={run} />
     </>

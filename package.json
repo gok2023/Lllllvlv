@@ -98,7 +98,7 @@
         "dmg",
         "zip"
       ],
-      "icon": "resources/icon.icns"
+      "icon": "resources/icon.png"
     },
     "win": {
       "target": [
@@ -140,5 +140,5 @@
       }
     ]
   },
-  "productName": "Freebo"
+  "productName": "Lllllvlv"
 }

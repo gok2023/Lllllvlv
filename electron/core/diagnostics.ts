@@ -54,7 +54,7 @@ export function productLink(
   url.searchParams.set("title", "[Bug] ");
   url.searchParams.set(
     "body",
-    `### 问题描述 / Description\n\n\n### 复现步骤 / Steps to reproduce\n\n1. \n\n### 预期结果 / Expected behavior\n\n\n### 环境 / Environment\n\nFreebo ${diagnostic.version}\n${diagnostic.platform} ${diagnostic.arch} (${diagnostic.osRelease})\nElectron ${diagnostic.electron} / Chromium ${diagnostic.chromium}\n\n### 诊断信息 / Diagnostics\n\n请从设置 → 诊断复制信息，检查后粘贴到此处。\nCopy from Settings → Diagnostics, review it, and paste here.\n`,
+    `### 问题描述 / Description\n\n\n### 复现步骤 / Steps to reproduce\n\n1. \n\n### 预期结果 / Expected behavior\n\n\n### 环境 / Environment\n\nLllllvlv ${diagnostic.version}\n${diagnostic.platform} ${diagnostic.arch} (${diagnostic.osRelease})\nElectron ${diagnostic.electron} / Chromium ${diagnostic.chromium}\n\n### 诊断信息 / Diagnostics\n\n请从设置 → 诊断复制信息，检查后粘贴到此处。\nCopy from Settings → Diagnostics, review it, and paste here.\n`,
   );
   return url.toString();
 }

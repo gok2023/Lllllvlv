@@ -110,7 +110,7 @@ export function BrowserShell() {
               title={t("appHome")}
               onClick={() => go("home")}
             >
-              <img src="./icon.svg" alt="" width={18} height={18} />
+              <img src="./icon.png" alt="" width={18} height={18} />
               <BrandName />
             </Button>
             {tabs

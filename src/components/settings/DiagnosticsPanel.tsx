@@ -278,7 +278,7 @@ export function DiagnosticsPanel({ state, run }: { state: AppState; run: RunActi
         {data && (
           <Details
             rows={[
-              ["Freebo", `v${data.version}`],
+              ["Lllllvlv", `v${data.version}`],
               [t("systemInfo"), `${data.platform} ${data.arch} · ${data.osRelease}`],
               ["Electron / Chromium", `${data.electron} / ${data.chromium}`],
               ["Node.js", data.node],

@@ -1,13 +1,12 @@
-<picture style="align-items: center; display: flex; justify-content: center;">
-  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/freebo/svg/logo-on-dark.svg" />
-  <img src="assets/brand/freebo/svg/logo.svg" width="280" alt="Freebo" />
-</picture>
+<p align="center"><img src="assets/personal/app-icon.png" width="180" alt="Lllllvlv 图标" /></p>
+
+<h1 align="center">Lllllvlv</h1>
+
+<p align="center">基于 Freebo 的个人定制版桌面影音客户端</p>
 
 [![English](https://img.shields.io/badge/English-193C35?style=flat&logo=googletranslate&logoColor=white)](README.en.md)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-193C35?style=flat)](LICENSE)
 [![macOS, Windows, Linux](https://img.shields.io/badge/Platforms-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-193C35?style=flat)](#功能)
-[![产品官网](https://img.shields.io/badge/%E5%AE%98%E7%BD%91-Freebo-193C35?style=flat)](https://elonzh.cn/toys/freebo)
-[![下载 Freebo](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Freebo-193C35?style=flat)](https://github.com/elonzh/freebo/releases/latest)
 [![更新说明](https://img.shields.io/badge/%E6%9B%B4%E6%96%B0%E8%AF%B4%E6%98%8E-193C35?style=flat)](CHANGELOG.md)
 
 **免费开源的桌面影音客户端。在熟悉的媒体库里浏览，用喜欢的本地播放器观看。**
@@ -40,13 +39,13 @@ Cine 仅打开当前视频，播放控制与进度同步的支持范围见 [播�
 
 ## 快速开始
 
-1. [下载安装包](https://github.com/elonzh/freebo/releases/latest)，打开 Freebo，在首次配置中选择已安装的播放器。
+1. 安装或从源码运行 Lllllvlv，在首次配置中选择已安装的播放器。
 2. 选择 Emby、Jellyfin 或 Plex，添加媒体服务器地址，在服务器网页中登录。
 3. 在媒体库中点击播放，用地址栏旁的播放按钮打开控制浮窗。
 
 服务器和播放器可随时在设置中修改。服务器名称可留空；Emby、Jellyfin 按需保存的账号密码会自动填入登录页，Plex 使用网页登录会话。Plex 地址应填写媒体服务器地址（例如 `http://192.168.1.10:32400`）。便携版播放器可手动指定路径，服务器地址支持端口和反向代理子路径。
 
-支持自动更新的安装版会自动检查并下载新版本，在「设置 → 关于」选择重启安装；其他版本可从该页面前往下载。支持范围见 [架构文档](docs/architecture.md#构建与升级)。
+此个人定制版已关闭上游自动更新入口。构建方式见 [开发流程](docs/development.md#环境与源码运行)。
 
 ## 开发指引
 
@@ -55,3 +54,5 @@ Cine 仅打开当前视频，播放控制与进度同步的支持范围见 [播�
 ## 致谢
 
 感谢 [embyToLocalPlayer](https://github.com/kjtsune/embyToLocalPlayer) 提供协议与行为参考。
+
+本项目基于 [Freebo 原项目](https://github.com/elonzh/freebo)，感谢原作者及贡献者。

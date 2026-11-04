@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopAPI, AppState } from "../src/shared/types";
 
 const api: DesktopAPI = {
@@ -20,6 +20,11 @@ const api: DesktopAPI = {
   choosePlayer: (kind) => ipcRenderer.invoke("app:choose-player", kind),
   removePlayer: (id) => ipcRenderer.invoke("app:remove-player", id),
   choosePlayerExecutable: () => ipcRenderer.invoke("app:choose-player-executable"),
+  chooseStartupVideo: () => ipcRenderer.invoke("app:choose-startup-video"),
+  setStartupVideo: (path) => ipcRenderer.invoke("app:set-startup-video", path),
+  startupVideoPath: (file) => webUtils.getPathForFile(file),
+  clearStartupVideo: () => ipcRenderer.invoke("app:clear-startup-video"),
+  getStartupVideo: () => ipcRenderer.invoke("app:get-startup-video"),
   saveCustomPlayer: (player) => ipcRenderer.invoke("app:save-custom-player", player),
   updateSettings: (settings) => ipcRenderer.invoke("app:settings", settings),
   control: (control) => ipcRenderer.invoke("app:control", control),

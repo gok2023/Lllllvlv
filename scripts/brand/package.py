@@ -26,9 +26,7 @@ icon = Image.open(BRAND / "icons/icon-1024.png").convert("RGBA")
 icon.save(BRAND / "icons/icon.ico", sizes=[(16,16), (24,24), (32,32), (48,48), (64,64), (128,128), (256,256)])
 icon.save(BRAND / "icons/icon.icns", sizes=[(16,16), (32,32), (64,64), (128,128), (256,256), (512,512), (1024,1024)])
 for source, target in [
-    ("icons/icon.ico", "resources/icon.ico"), ("icons/icon.icns", "resources/icon.icns"),
-    ("icons/icon-1024.png", "resources/icon.png"),
-    ("icons/icon-512.png", "public/icon.png"), ("social/social.png", "docs/assets/brand/social.png"),
+    ("social/social.png", "docs/assets/brand/social.png"),
 ]:
     shutil.copyfile(BRAND / source, ROOT / target)
 entries = {}

@@ -46,6 +46,7 @@ export const defaultSettings: Settings = {
   playerScanCompleted: false,
   runInBackground: true,
   remindOnClose: true,
+  startupVideoEnabled: false,
 };
 
 const serverSchema = z
@@ -97,6 +98,9 @@ export const settingsSchema = z.object({
   playerScanCompleted: z.boolean().default(defaultSettings.playerScanCompleted),
   runInBackground: z.boolean().default(defaultSettings.runInBackground),
   remindOnClose: z.boolean().default(defaultSettings.remindOnClose),
+  startupVideoEnabled: z.boolean().default(defaultSettings.startupVideoEnabled),
+  startupVideoName: z.string().optional(),
+  startupVideoFile: z.string().regex(/^[0-9a-f-]{36}\.(mp4|webm)$/).optional(),
 });
 
 export type SettingsDiagnostic =

@@ -1,20 +1,19 @@
 import { cn } from "../../lib/utils";
 
-/** Canonical Atma 600 lockup. Both variants have identical vector geometry. */
 export function BrandLogo({ width = 240, className }: { width?: number; className?: string }) {
   return (
     <span
-      className={cn("inline-block max-w-full", className)}
+      className={cn("inline-flex max-w-full items-center gap-3", className)}
       role="img"
-      aria-label="Freebo"
+      aria-label="Lllllvlv"
       style={{ width }}
     >
-      <img src="./brand/logo.svg" alt="" className="block h-auto w-full dark:hidden" />
-      <img src="./brand/logo-on-dark.svg" alt="" className="hidden h-auto w-full dark:block" />
+      <img src="./icon.png" alt="" className="block h-14 w-14 shrink-0" />
+      <span className="brand-name text-[30px] leading-none">Lllllvlv</span>
     </span>
   );
 }
 
 export function BrandName({ className }: { className?: string }) {
-  return <span className={cn("brand-name", className)}>Freebo</span>;
+  return <span className={cn("brand-name", className)}>Lllllvlv</span>;
 }

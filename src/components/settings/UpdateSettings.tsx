@@ -24,7 +24,13 @@ export function UpdateSettings({ state, run }: { state: AppState; run: RunAction
   const status = (() => {
     switch (update.status) {
       case "disabled":
-        return t(update.reason === "development" ? "updateDevelopment" : "updateManual");
+        return t(
+          update.reason === "fork-disabled"
+            ? "updateForkDisabled"
+            : update.reason === "development"
+              ? "updateDevelopment"
+              : "updateManual",
+        );
       case "checking":
         return t("updateChecking");
       case "up-to-date":
@@ -56,7 +62,8 @@ export function UpdateSettings({ state, run }: { state: AppState; run: RunAction
             {status}
           </p>
         </div>
-        {update.status === "disabled" ? (
+        {update.status === "disabled" && update.reason === "fork-disabled" ? null : update.status ===
+          "disabled" ? (
           <Button
             variant="outline"
             onClick={() => void run("releases", (api) => api.openReleases())}

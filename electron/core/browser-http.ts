@@ -25,7 +25,7 @@ export function guardServerAccess(fetcher: Fetcher): Fetcher {
 }
 
 export function browserUserAgent(userAgent: string): string {
-  return userAgent.replace(/\b(?:Freebo|Electron)\/[\w.-]+\s*/gi, "");
+  return userAgent.replace(/\b(?:Freebo|Lllllvlv|Electron)\/[\w.-]+\s*/gi, "");
 }
 
 export function browserDeviceName(userAgent: string): string {

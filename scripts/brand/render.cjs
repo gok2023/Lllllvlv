@@ -31,17 +31,10 @@ app
       await writeFile(target, Buffer.from(png, "base64"));
     }
     for (const [source, target] of [
-      ["assets/brand/freebo/icons/icon-1024.png", "resources/icon.png"],
-      ["assets/brand/freebo/icons/app-icon.svg", "public/icon.svg"],
-      ["assets/brand/freebo/icons/icon-512.png", "public/icon.png"],
       ["assets/brand/freebo/social/social.png", "docs/assets/brand/social.png"],
       ["assets/brand/freebo/fonts/Atma-SemiBold.woff2", "public/fonts/Atma-SemiBold.woff2"],
       ["assets/brand/freebo/fonts/OFL.txt", "public/fonts/Atma-OFL.txt"],
       ["assets/brand/freebo/fonts/OFL.txt", "docs/licenses/Atma-OFL.txt"],
-      ...["logo", "logo-on-dark"].map((name) => [
-        "assets/brand/freebo/svg/" + name + ".svg",
-        "public/brand/" + name + ".svg",
-      ]),
     ]) {
       await mkdir(path.dirname(path.join(root, target)), { recursive: true });
       await copyFile(path.join(root, source), path.join(root, target));

@@ -1,7 +1,7 @@
 import type { zh } from "./zh";
 
 export const en = {
-  brand: "Freebo",
+  brand: "Lllllvlv",
   appHome: "Home",
   homeEmptyTitle: "No services yet",
   homeEmptyDescription: "Add a service to open a media library or website.",
@@ -16,7 +16,7 @@ export const en = {
   closePlayback: "Close playback panel",
   playbackError: "Playback error",
   setup: "Quick setup",
-  setupWelcome: "Welcome to Freebo",
+  setupWelcome: "Welcome to Lllllvlv",
   setupDescription: "Connect your library and watch in your local player.",
   startSetup: "Start setup",
   setupLater: "Set up later",
@@ -66,7 +66,7 @@ export const en = {
   general: "General",
   diagnostics: "Diagnostics",
   about: "About",
-  showFreebo: "Show Freebo",
+  showFreebo: "Show Lllllvlv",
   softwareUpdates: "Software updates",
   updateReadyMenu: "Update ready…",
   checkUpdates: "Check for updates",
@@ -75,6 +75,7 @@ export const en = {
   updateAutomaticDescription:
     "Updates are checked and downloaded automatically. Restart when you are ready.",
   updateDevelopment: "Development builds do not check for updates.",
+  updateForkDisabled: "Updates are disabled in this build.",
   updateManual: "Download updates for this build from the releases page.",
   updateChecking: "Checking for updates…",
   updateCurrent: "You are up to date.",
@@ -84,14 +85,21 @@ export const en = {
   updateFailed: "Update failed. Check your connection and try again.",
   updateStopsPlayback: "Restarting will stop playback. You can cancel and update after watching.",
   backgroundDescription:
-    "Freebo keeps running and playing when you close the main window. Use the tray icon to reopen it or quit.",
+    "Lllllvlv keeps running and playing when you close the main window. Use the tray icon to reopen it or quit.",
   runInBackground: "Keep running after closing the window",
+  startupVideo: "Play a startup video",
+  startupVideoDescription: "Play once when Lllllvlv starts. MP4 or WebM; muted by default.",
+  startupVideoChoose: "Choose video",
+  startupVideoReplace: "Replace video",
+  startupVideoClear: "Clear video",
+  startupVideoSkip: "Skip",
+  startupVideoDrop: "Drop an MP4 or WebM here",
   runInBackgroundDescription:
-    "Show a tray icon. When off, closing the window stops playback and quits Freebo.",
+    "Show a tray icon. When off, closing the window stops playback and quits Lllllvlv.",
   remindOnClose: "Ask before running in the background",
   remindOnCloseDescription:
     "Confirm when closing the window. You can choose not to be reminded again.",
-  backgroundCloseTitle: "Keep Freebo running in the background?",
+  backgroundCloseTitle: "Keep Lllllvlv running in the background?",
   continueInBackground: "Run in background",
   doNotRemindAgain: "Do not remind me again",
   scan: "Scan again",
@@ -103,15 +111,15 @@ export const en = {
   mpvGuide: "Available on all three platforms, mainly controlled with keyboard shortcuts.",
   vlcGuide: "Available on all three platforms, with familiar playback controls.",
   cineGuide:
-    "For Linux. Opens the current video in Cine; Freebo resume, auto-next, track selection and progress sync are unavailable.",
+    "For Linux. Opens the current video in Cine; Lllllvlv resume, auto-next, track selection and progress sync are unavailable.",
   openedExternally: "Opened in player",
   externalPlaybackDescription:
-    "Control playback in the player and keep Freebo running to serve the media.",
+    "Control playback in the player and keep Lllllvlv running to serve the media.",
   potplayerGuide:
     "For Windows, with queue controls and progress sync. Select audio and embedded subtitles in the player.",
   mpcGuide: "For Windows, with native playback controls and progress sync.",
   playerConnection:
-    "Cannot read player status. Install the full player and run it with the same privileges as Freebo.",
+    "Cannot read player status. Install the full player and run it with the same privileges as Lllllvlv.",
   copyDiagnostics: "Copy diagnostics",
   copiedDiagnostics: "Copied",
   reportIssue: "Report an issue",
@@ -169,12 +177,12 @@ export const en = {
   playerUrlRequired: "Include {url} in the launch arguments to pass the video URL.",
   playerExecutableInvalid: "Cannot execute this file. Choose a valid player app or executable.",
   customPlayerGuide:
-    "Opens the current video with controls in the player; Freebo auto-next, track selection and progress sync are unavailable.",
+    "Opens the current video with controls in the player; Lllllvlv auto-next, track selection and progress sync are unavailable.",
   playerMpvIpc: "Enable mpv IPC",
   customPlayerMpvGuide:
-    "For players that accept mpv command-line options. Freebo configures IPC, resume position and tracks, with playback controls, continuous playback and progress reporting.",
+    "For players that accept mpv command-line options. Lllllvlv configures IPC, resume position and tracks, with playback controls, continuous playback and progress reporting.",
   playerMpvArgumentsConflict:
-    "With mpv IPC enabled, Freebo manages connection, resume, title, fullscreen and track options. Remove those options and --, --{, --} from the template.",
+    "With mpv IPC enabled, Lllllvlv manages connection, resume, title, fullscreen and track options. Remove those options and --, --{, --} from the template.",
   removePlayer: "Remove {{name}} · {{path}}",
   manualHint: "Already installed? Select the app or executable",
   autoNext: "Continuous playback",

@@ -10,6 +10,7 @@ import { RuntimeContext } from "./runtime/context";
 import { createAppRouter, connectNativeNavigation } from "./router";
 import { BrandLogo } from "./components/shared/Brand";
 import { Button } from "./components/ui/button";
+import { StartupGate } from "./components/StartupVideo";
 import "./style.css";
 
 const root = createRoot(document.getElementById("root")!);
@@ -28,6 +29,8 @@ async function start() {
     return;
   }
   cleanup?.();
+  const surface = new URLSearchParams(location.search).get("surface");
+  const startupVideo = surface === "servers" || surface === "playback" ? null : await api.getStartupVideo().catch(() => null);
   const runtime = createDesktopRuntime(api);
   cleanup = () => runtime.dispose();
   try {
@@ -37,7 +40,6 @@ async function start() {
     const unsubscribeLanguage = runtime.subscribe((state) => {
       if (i18n.language !== state.locale) void i18n.changeLanguage(state.locale);
     });
-    const surface = new URLSearchParams(location.search).get("surface");
     const router = createAppRouter(runtime, initial, surface);
     const unsubscribeNavigation = connectNativeNavigation(
       router,
@@ -54,7 +56,7 @@ async function start() {
         <QueryClientProvider client={runtime.queryClient}>
           <I18nextProvider i18n={i18n}>
             <RuntimeContext.Provider value={runtime}>
-              <RouterProvider router={router} />
+              <StartupGate locale={initial.locale} source={startupVideo}><RouterProvider router={router} /></StartupGate>
             </RuntimeContext.Provider>
           </I18nextProvider>
         </QueryClientProvider>

@@ -72,6 +72,9 @@ export interface Settings {
   playerScanCompleted: boolean;
   runInBackground: boolean;
   remindOnClose: boolean;
+  startupVideoEnabled: boolean;
+  startupVideoName?: string;
+  startupVideoFile?: string;
 }
 export interface PlaybackItem {
   id: string;
@@ -170,7 +173,7 @@ export interface UpdateState {
     | "downloaded"
     | "installing"
     | "error";
-  reason?: "development" | "unsigned-mac" | "unsupported-package";
+  reason?: "development" | "unsigned-mac" | "unsupported-package" | "fork-disabled";
   version?: string;
   percent?: number;
 }
@@ -230,6 +233,11 @@ export interface DesktopAPI {
   choosePlayer(this: void, kind: PlayerKind): Promise<AppState>;
   removePlayer(this: void, id: string): Promise<AppState>;
   choosePlayerExecutable(this: void): Promise<string | null>;
+  chooseStartupVideo(this: void): Promise<AppState | null>;
+  setStartupVideo(this: void, path: string): Promise<AppState>;
+  startupVideoPath(this: void, file: File): string;
+  clearStartupVideo(this: void): Promise<AppState>;
+  getStartupVideo(this: void): Promise<string | null>;
   saveCustomPlayer(this: void, player: CustomPlayerInput): Promise<AppState>;
   updateSettings(
     this: void,
@@ -244,6 +252,7 @@ export interface DesktopAPI {
         | "setupCompleted"
         | "runInBackground"
         | "remindOnClose"
+        | "startupVideoEnabled"
       >
     >,
   ): Promise<AppState>;
