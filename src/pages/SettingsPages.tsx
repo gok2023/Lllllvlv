@@ -509,6 +509,9 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
         case "getWatchStatistics":
           operation = runtime.api.getWatchStatistics();
           break;
+        case "correctWatchLibrary":
+          operation = runtime.api.correctWatchLibrary(message.args?.[0]);
+          break;
         case "refreshWatchStatistics":
           operation = runtime.api.refreshWatchStatistics();
           break;

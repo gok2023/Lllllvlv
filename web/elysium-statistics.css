@@ -1,0 +1,92 @@
+/* Screen-only reading surfaces; the Original and print palettes stay in the page. */
+@media screen {
+  :root[data-visual-theme="elysium"] {
+    --panel: rgba(14, 21, 25, 0.94);
+    --panel2: rgba(22, 32, 36, 0.96);
+    --line: rgba(238, 232, 218, 0.34);
+    --line2: rgba(238, 232, 218, 0.52);
+    --text: #f5f0e6;
+    --main: #eee8da;
+    --sub: #d9dcd5;
+    --muted: #bfc7c2;
+    --accent: #f0ad8d;
+    --accentSoft: rgba(200, 101, 73, 0.27);
+  }
+
+  :root[data-visual-theme="elysium"] .panel,
+  :root[data-visual-theme="elysium"] .seg,
+  :root[data-visual-theme="elysium"] .soft-btn,
+  :root[data-visual-theme="elysium"] .select,
+  :root[data-visual-theme="elysium"] .record-search,
+  :root[data-visual-theme="elysium"] .paging button,
+  :root[data-visual-theme="elysium"] .show-more {
+    background: var(--panel);
+    border-color: var(--line);
+    color: var(--sub);
+  }
+
+  :root[data-visual-theme="elysium"] .kpi,
+  :root[data-visual-theme="elysium"] .weekday-cell,
+  :root[data-visual-theme="elysium"] .series-row,
+  :root[data-visual-theme="elysium"] .muted-box,
+  :root[data-visual-theme="elysium"] .activity-table thead th,
+  :root[data-visual-theme="elysium"] .activity-table .detail {
+    background: var(--panel2);
+    border-color: var(--line);
+  }
+
+  :root[data-visual-theme="elysium"] .seg button.active,
+  :root[data-visual-theme="elysium"] .series-tabs button.active,
+  :root[data-visual-theme="elysium"] .panel-seg button.active {
+    background: rgba(80, 91, 88, 0.9);
+    color: var(--text);
+  }
+
+  :root[data-visual-theme="elysium"] .activity-table tr:hover td,
+  :root[data-visual-theme="elysium"] .rank-row:hover,
+  :root[data-visual-theme="elysium"] .series-row:hover {
+    background: rgba(57, 70, 70, 0.9);
+  }
+
+  :root[data-visual-theme="elysium"] .activity-table td,
+  :root[data-visual-theme="elysium"] .top,
+  :root[data-visual-theme="elysium"] .foot-controls {
+    border-color: var(--line);
+  }
+
+  :root[data-visual-theme="elysium"] .activity-table .secondary,
+  :root[data-visual-theme="elysium"] .activity-table .detail,
+  :root[data-visual-theme="elysium"] .subtitle,
+  :root[data-visual-theme="elysium"] .notice,
+  :root[data-visual-theme="elysium"] .hint {
+    color: var(--muted);
+  }
+
+  :root[data-visual-theme="elysium"] .bar-track,
+  :root[data-visual-theme="elysium"] .weekday-cell .mini,
+  :root[data-visual-theme="elysium"] .series-cells i {
+    background: rgba(238, 232, 218, 0.23);
+  }
+
+  :root[data-visual-theme="elysium"] .library-dialog {
+    background: rgba(20, 29, 33, 0.98);
+    border-color: var(--line2);
+    color: var(--text);
+    box-shadow: 0 24px 72px rgba(0, 0, 0, 0.75);
+  }
+
+  :root[data-visual-theme="elysium"] .library-dialog::backdrop {
+    background: rgba(7, 12, 15, 0.75);
+  }
+
+  :root[data-visual-theme="elysium"] .library-dialog select,
+  :root[data-visual-theme="elysium"] .library-dialog button {
+    background: var(--panel2);
+    color: var(--text);
+    border-color: var(--line2);
+  }
+
+  :root[data-visual-theme="elysium"] .library-edit {
+    color: var(--accent);
+  }
+}

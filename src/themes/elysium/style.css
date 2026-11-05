@@ -238,15 +238,47 @@
   font-weight: 400;
 }
 :root[data-visual-theme="elysium"] .settings-layout aside {
+  z-index: 1;
   background: var(--theme-background-control-tint);
   border-right: 1px solid #eee8da44;
   backdrop-filter: blur(3px);
 }
+:root[data-visual-theme="elysium"] .settings-layout {
+  position: relative;
+  isolation: isolate;
+}
+:root[data-visual-theme="elysium"] .settings-layout::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(9, 14, 17, 0.23);
+}
+:root[data-visual-theme="elysium"] .settings-layout > div {
+  position: relative;
+  z-index: 1;
+}
 :root[data-visual-theme="elysium"] .settings-layout > div > section {
-  background: var(--theme-background-content-tint);
+  position: relative;
+  isolation: isolate;
+  background: rgba(18, 25, 29, 0.84);
   border: 1px solid #eee8da44;
   padding: 22px;
   backdrop-filter: blur(4px);
+}
+:root[data-visual-theme="elysium"] .settings-layout > div > section::before {
+  content: "";
+  position: absolute;
+  inset: -36px -58px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(7, 12, 15, 0.75) 0%,
+    rgba(7, 12, 15, 0.48) 44%,
+    transparent 78%
+  );
 }
 :root[data-visual-theme="elysium"] .settings-layout input,
 :root[data-visual-theme="elysium"] .settings-layout textarea,

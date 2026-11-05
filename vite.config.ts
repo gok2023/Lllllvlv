@@ -6,6 +6,9 @@ import { readFileSync } from "node:fs";
 
 const statisticsHtml = fileURLToPath(new URL("./web/统计页面.html", import.meta.url));
 const statisticsScript = fileURLToPath(new URL("./web/watch-statistics.js", import.meta.url));
+const statisticsThemeStyle = fileURLToPath(
+  new URL("./web/elysium-statistics.css", import.meta.url),
+);
 const statisticsNames = fileURLToPath(new URL("./web/director-map.js", import.meta.url));
 const statisticsGenres = fileURLToPath(new URL("./web/genre-map.js", import.meta.url));
 
@@ -23,6 +26,10 @@ export default defineConfig({
         server.middlewares.use("/watch-statistics.js", (_request, response) => {
           response.setHeader("Content-Type", "text/javascript; charset=utf-8");
           response.end(readFileSync(statisticsScript));
+        });
+        server.middlewares.use("/elysium-statistics.css", (_request, response) => {
+          response.setHeader("Content-Type", "text/css; charset=utf-8");
+          response.end(readFileSync(statisticsThemeStyle));
         });
         server.middlewares.use("/director-map.js", (_request, response) => {
           response.setHeader("Content-Type", "text/javascript; charset=utf-8");
@@ -43,6 +50,11 @@ export default defineConfig({
           type: "asset",
           fileName: "watch-statistics.js",
           source: readFileSync(statisticsScript),
+        });
+        this.emitFile({
+          type: "asset",
+          fileName: "elysium-statistics.css",
+          source: readFileSync(statisticsThemeStyle),
         });
         this.emitFile({
           type: "asset",

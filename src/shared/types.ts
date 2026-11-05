@@ -217,6 +217,10 @@ export interface DesktopAPI {
   getWatchStatistics(
     this: void,
   ): Promise<import("./watch-statistics").WatchStatisticsSnapshot | null>;
+  correctWatchLibrary(
+    this: void,
+    input: { recordId: string; libraryId: string | null; remember: boolean },
+  ): Promise<import("./watch-statistics").WatchStatisticsSnapshot>;
   refreshWatchStatistics(this: void): Promise<void>;
   getWatchStatisticsStatus(
     this: void,

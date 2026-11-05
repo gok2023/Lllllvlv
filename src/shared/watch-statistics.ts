@@ -51,6 +51,8 @@ export interface WatchStatisticsSnapshot {
   backfill: WatchBackfill[];
   settings: WatchStatisticsSettings;
   cursor?: string;
+  libraries?: { id: string; name: string }[];
+  corrections?: { records: Record<string, string>; items: Record<string, string> };
 }
 export interface WatchStatisticsImportPreview {
   version: number;

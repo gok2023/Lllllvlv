@@ -69,6 +69,7 @@
       });
     return {
       getWatchStatistics: () => call("getWatchStatistics"),
+      correctWatchLibrary: (input) => call("correctWatchLibrary", input),
       refreshWatchStatistics: () => call("refreshWatchStatistics"),
       getWatchStatisticsStatus: () => call("getWatchStatisticsStatus"),
       getWatchStatisticsPathStatus: () => call("getWatchStatisticsPathStatus"),
@@ -200,6 +201,19 @@
     return [start, end];
   };
   const mediaMap = () => new Map((state.snapshot?.media || []).map((m) => [String(m.id), m]));
+  const normalizedId = (value) =>
+    String(value || "")
+      .replace(/-/g, "")
+      .toLowerCase();
+  function effectiveLibrary(record, media) {
+    const correction = state.snapshot?.corrections || {};
+    const id = correction.records?.[record.id] || correction.items?.[normalizedId(record.itemId)];
+    return (
+      (id && state.snapshot?.libraries?.find((entry) => entry.id === id)?.name) ||
+      media?.libraryName ||
+      "未匹配"
+    );
+  }
   const rawRecords = () =>
     (state.snapshot?.records || [])
       .map((r) => {
@@ -213,7 +227,7 @@
           media: m,
           name: r.itemName || m?.name || "未知作品",
           type: m?.type || r.itemType,
-          library: m?.libraryName || "未匹配",
+          library: effectiveLibrary(r, m),
           genres: normalizeNames(m?.genres, "genres"),
           directors: normalizeNames(m?.directors, "directors"),
           year: num(m?.year),
@@ -266,7 +280,7 @@
           name: m?.name || "未知作品",
           type: m?.type,
           seriesId: m?.seriesId,
-          library: m?.libraryName || "未匹配",
+          library: effectiveLibrary({ itemId: b.itemId }, m),
           genres: normalizeNames(m?.genres, "genres"),
           directors: normalizeNames(m?.directors, "directors"),
           year: num(m?.year),
@@ -735,7 +749,6 @@
     el.replaceChildren();
     for (const g of visible) {
       const names = [...new Set(g.records.map((r) => r.name))],
-        libs = [...new Set(g.records.map((r) => r.library))],
         tr = document.createElement("tr");
       tr.dataset.activityKey = g.records
         .map((r) => String(r.id))
@@ -744,10 +757,10 @@
       const details = g.records
         .map(
           (r, i) =>
-            `<div>${i + 1}. <strong>${esc(dateLabel(r.start))}</strong>　${esc(r.name)}　${duration(r.seconds)}${r.clippedSeconds < r.seconds ? `（当前范围计入 ${duration(r.clippedSeconds)}）` : ``}<div>客户端：${esc(r.clientName || "未知")} · 设备：${esc(r.deviceName || "未知")} · ${esc(r.playbackMethod || "")}</div></div>`,
+            `<div>${i + 1}. <strong>${esc(dateLabel(r.start))}</strong>　${esc(r.name)}　${duration(r.seconds)}${r.clippedSeconds < r.seconds ? `（当前范围计入 ${duration(r.clippedSeconds)}）` : ``}<div>客户端：${esc(r.clientName || "未知")} · 设备：${esc(r.deviceName || "未知")} · ${esc(r.playbackMethod || "")} · <button type="button" class="library-edit" data-record-id="${esc(r.id)}">${esc(r.library)} · 修改媒体库</button></div></div>`,
         )
         .join("<hr>");
-      tr.innerHTML = `<td><div class="primary">${dayKey(new Date(g.start))}</div><div class="secondary">${esc(dateLabel(new Date(g.start)).slice(11))}—${esc(dateLabel(new Date(g.end)).slice(11))}${dayKey(new Date(g.start)) !== dayKey(new Date(g.end)) ? "（跨日）" : ""} · 结束时间估算</div></td><td><div class="primary">${esc(names[0])}${names.length > 1 ? ` 等 ${names.length} 部作品` : ""}</div><div class="secondary">${g.records.length} 次播放</div><details><summary>查看每次播放</summary><div class="detail">${details}</div></details></td><td><span class="row-tag">${esc(libs.join("、"))}</span></td><td><span class="num">${duration(g.total)}</span></td><td>${g.records.length > 1 ? "合并记录" : "单次播放"}<div class="secondary">活动跨度 ${duration((g.end - g.start) / 1000)}（估算）</div></td>`;
+      tr.innerHTML = `<td><div class="primary">${dayKey(new Date(g.start))}</div><div class="secondary">${esc(dateLabel(new Date(g.start)).slice(11))}—${esc(dateLabel(new Date(g.end)).slice(11))}${dayKey(new Date(g.start)) !== dayKey(new Date(g.end)) ? "（跨日）" : ""} · 结束时间估算</div></td><td><div class="primary">${esc(names[0])}${names.length > 1 ? ` 等 ${names.length} 部作品` : ""}</div><div class="secondary">${g.records.length} 次播放</div><details><summary>查看每次播放</summary><div class="detail">${details}</div></details></td><td>${g.records.map((r) => `<button type="button" class="row-tag library-edit" data-record-id="${esc(r.id)}" title="${esc(r.name)} · ${esc(dateLabel(r.start))}">${esc(r.library)}</button>`).join(" ")}</td><td><span class="num">${duration(g.total)}</span></td><td>${g.records.length > 1 ? "合并记录" : "单次播放"}<div class="secondary">活动跨度 ${duration((g.end - g.start) / 1000)}（估算）</div></td>`;
       el.append(tr);
     }
     if (!visible.length)
@@ -771,6 +784,65 @@
       filter.append(button);
     }
   }
+  let editingRecord = null;
+  $("activityRows").onclick = (event) => {
+    const button = event.target.closest(".library-edit");
+    if (!button) return;
+    const record = rawRecords().find((entry) => entry.id === button.dataset.recordId);
+    if (!record) return;
+    editingRecord = record;
+    $("libraryContext").textContent =
+      `${record.name} · ${dateLabel(record.start)} · 当前：${record.library}`;
+    const select = $("librarySelect");
+    select.replaceChildren();
+    for (const library of state.snapshot?.libraries || []) {
+      const option = document.createElement("option");
+      option.value = library.id;
+      option.textContent = library.name;
+      select.append(option);
+    }
+    const corrections = state.snapshot?.corrections || {};
+    const preferred =
+      corrections.records?.[record.id] ||
+      corrections.items?.[normalizedId(record.itemId)] ||
+      record.media?.libraryId;
+    select.value = [...select.options].some((option) => option.value === preferred)
+      ? preferred
+      : select.options[0]?.value || "";
+    $("libraryRemember").checked = false;
+    $("libraryError").textContent = select.options.length ? "" : "尚无媒体库目录，请先重新同步。";
+    $("librarySave").disabled = !select.options.length;
+    $("libraryReset").disabled = !corrections.records?.[record.id];
+    $("libraryRemember").onchange = () => {
+      $("libraryReset").disabled =
+        !corrections.records?.[record.id] &&
+        !($("libraryRemember").checked && corrections.items?.[normalizedId(record.itemId)]);
+    };
+    $("libraryDialog").showModal();
+  };
+  $("libraryCancel").onclick = () => $("libraryDialog").close();
+  async function submitLibrary(libraryId) {
+    if (!editingRecord) return;
+    const remember = $("libraryRemember").checked;
+    $("librarySave").disabled = true;
+    $("libraryReset").disabled = true;
+    try {
+      const result = await api.correctWatchLibrary({
+        recordId: editingRecord.id,
+        libraryId,
+        remember,
+      });
+      applySnapshot(result, false);
+      $("libraryDialog").close();
+    } catch (error) {
+      $("libraryError").textContent = error?.message || String(error);
+    } finally {
+      $("librarySave").disabled = false;
+      $("libraryReset").disabled = false;
+    }
+  }
+  $("librarySave").onclick = () => void submitLibrary($("librarySelect").value);
+  $("libraryReset").onclick = () => void submitLibrary(null);
   function render() {
     if (!state.snapshot) return;
     const expandedRows = new Set(

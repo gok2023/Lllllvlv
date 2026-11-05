@@ -8,6 +8,7 @@ Freebo 自有界面的视觉主题由 `settings.visualTheme` 保存，独立于 
 - `src/App.tsx` 在主窗口、选服务窗口和播放浮窗的 React 根节点设置 `data-visual-theme`。既有 `.dark` 类仍根据应用外观与系统偏好独立决定。Tailwind/shadcn 的颜色与圆角工具通过语义 CSS 变量取值；少量展示性插槽可用主题变量，例如首页标题背景。Original 的插槽值为空。
 - Electron 主进程取注册表中的背景、卡片和标题栏颜色。原生浏览器外壳的固定 88px 高度、网页视图边界和 IPC 保持原有职责。主题样式不进入媒体服务器 `WebContentsView`。
 - 本地统计页面 `web/统计页面.html` 经 Vite 输出为 `watch-statistics.html`，由 `StatisticsFrame` 的同源 iframe 加载。父组件仅向该 iframe 发送白名单 `visual-theme` 展示消息；既有统计 RPC 与数据通道不变。Original 沿用统计页原样式，Elysium 使用透明 iframe 表面透出父窗口的共享画作。打印样式保持白底。
+- Elysium 统计阅读表面位于独立的 `web/elysium-statistics.css`，仅在屏幕媒体及 `data-visual-theme="elysium"` 下生效；Vite 开发服务与构建均提供该文件。Original 和打印规则沿用统计页自身样式。
 
 ## 扩展接口
 

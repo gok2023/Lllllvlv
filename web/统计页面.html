@@ -1048,6 +1048,44 @@
         font-size: 13px;
         line-height: 1.8;
       }
+      .library-dialog {
+        width: min(520px, 90vw);
+      }
+      .library-dialog > label {
+        display: block;
+        margin: 14px 0 7px;
+        font-size: 14px;
+      }
+      .library-dialog select {
+        width: 100%;
+        min-height: 42px;
+        padding: 7px 10px;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        background: var(--panel2);
+        color: var(--text);
+      }
+      .library-dialog .library-remember {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        line-height: 1.5;
+      }
+      .library-dialog .library-remember input {
+        margin-top: 4px;
+      }
+      .library-dialog #libraryError {
+        color: var(--red);
+      }
+      .library-dialog #libraryResetHint {
+        color: var(--muted);
+      }
+      .library-dialog .import-actions {
+        flex-wrap: wrap;
+      }
+      .library-edit {
+        cursor: pointer;
+      }
       .import-actions {
         display: flex;
         justify-content: flex-end;
@@ -1138,6 +1176,7 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="./elysium-statistics.css" />
   </head>
   <body>
     <main>
@@ -1495,6 +1534,22 @@
         >
           取消</button
         ><button class="soft-btn" id="importConfirm" type="button">导入并替换</button>
+      </div>
+    </dialog>
+    <dialog id="libraryDialog" class="import-dialog library-dialog">
+      <h3>修改播放记录媒体库</h3>
+      <p id="libraryContext"></p>
+      <label for="librarySelect">归入媒体库</label>
+      <select id="librarySelect"></select>
+      <label class="library-remember"
+        ><input id="libraryRemember" type="checkbox" /> 记住这部作品，后续记录也归入此媒体库</label
+      >
+      <p id="libraryResetHint">撤销仅清除此条记录；勾选“记住”后撤销也会清除这部作品的规则。</p>
+      <p id="libraryError" role="alert"></p>
+      <div class="import-actions">
+        <button class="soft-btn" id="libraryReset" type="button">清除修正</button>
+        <button class="soft-btn" id="libraryCancel" type="button">取消</button>
+        <button class="soft-btn" id="librarySave" type="button">保存</button>
       </div>
     </dialog>
     <script src="./director-map.js"></script>

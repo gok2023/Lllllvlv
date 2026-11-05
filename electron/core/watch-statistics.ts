@@ -126,10 +126,12 @@ const snapshotSchema = z.object({
   backfill: z.array(backfillSchema),
   settings: settingsSchema,
   cursor: optionalText,
+  libraries: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 
 export class WatchStatisticsStore {
   private writes = new Map<string, Promise<WatchStatisticsSnapshot>>();
+  private correctionWrites = new Map<string, Promise<unknown>>();
   private currentSettings = new Map<string, WatchStatisticsSettings>();
   constructor(
     private readonly directory: string,
@@ -137,6 +139,70 @@ export class WatchStatisticsStore {
   ) {}
   private path(serverId: string, userId: string) {
     return join(this.directory, "watch-statistics", `${serverId}-${itemId(userId)}.json`);
+  }
+  private correctionPath(serverId: string, userId: string) {
+    return `${this.path(serverId, userId)}.corrections.json`;
+  }
+  async getView(serverId: string, userId: string): Promise<WatchStatisticsSnapshot | null> {
+    const snapshot = await this.get(serverId, userId);
+    if (!snapshot) return null;
+    let corrections = {
+      records: {} as Record<string, string>,
+      items: {} as Record<string, string>,
+    };
+    try {
+      const parsed = JSON.parse(await readFile(this.correctionPath(serverId, userId), "utf8"));
+      const schema = z.object({
+        records: z.record(z.string(), z.string()),
+        items: z.record(z.string(), z.string()),
+      });
+      const result = schema.safeParse(parsed);
+      if (result.success) corrections = result.data;
+    } catch {
+      /* Missing or malformed corrections leave the original snapshot usable. */
+    }
+    return { ...snapshot, corrections };
+  }
+  async correctLibrary(
+    serverId: string,
+    userId: string,
+    recordId: string,
+    libraryId: string | null,
+    remember: boolean,
+  ) {
+    const path = this.correctionPath(serverId, userId);
+    const prior = this.correctionWrites.get(path) ?? Promise.resolve();
+    const next = prior
+      .catch(() => {})
+      .then(async () => {
+        const snapshot = await this.getView(serverId, userId);
+        if (!snapshot) throw new Error("尚无观影统计数据");
+        const record = snapshot.records.find((entry) => entry.id === recordId);
+        if (!record) throw new Error("播放记录不存在");
+        if (libraryId !== null && !snapshot.libraries?.some((entry) => entry.id === libraryId))
+          throw new Error("媒体库不存在，请重新同步");
+        const corrections = snapshot.corrections!;
+        const key = itemId(record.itemId);
+        if (libraryId === null) {
+          delete corrections.records[recordId];
+          if (remember) delete corrections.items[key];
+        } else {
+          corrections.records[recordId] = libraryId;
+          if (remember) corrections.items[key] = libraryId;
+        }
+        await mkdir(dirname(path), { recursive: true });
+        const temporary = `${path}.${randomUUID()}.tmp`;
+        await writeFile(temporary, JSON.stringify(corrections));
+        const { rename } = await import("node:fs/promises");
+        await rename(temporary, path);
+        return { ...snapshot, corrections };
+      });
+    this.correctionWrites.set(path, next);
+    try {
+      return await next;
+    } finally {
+      if (this.correctionWrites.get(path) === next) this.correctionWrites.delete(path);
+    }
   }
   async get(serverId: string, userId: string): Promise<WatchStatisticsSnapshot | null> {
     try {
@@ -675,6 +741,7 @@ export class WatchStatisticsStore {
     const snapshot = {
       serverId,
       refreshedAt: new Date().toISOString(),
+      libraries: [...libraries].map(([id, name]) => ({ id, name })),
       media: resolvedMedia,
       records,
       backfill,

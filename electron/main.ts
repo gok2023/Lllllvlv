@@ -168,7 +168,8 @@ async function watchUserId(serverId: string) {
   try {
     const files = (await readdir(join(userDataPath, "watch-statistics"))).filter(
       (name) =>
-        name.startsWith(`${serverId}-`) && name.endsWith(".json") && name !== "current-user.json",
+        name.startsWith(`${serverId}-`) &&
+        /^[0-9a-f]{32}\.json$/i.test(name.slice(serverId.length + 1)),
     );
     if (files.length === 1) {
       const userId = files[0].slice(serverId.length + 1, -5);
@@ -207,8 +208,8 @@ async function watchIdentity() {
   if (!watchBinding) {
     watchBinding = watchStatistics
       .bindImported(server.id, pendingWatchUserId, auth.userId)
-      .then((snapshot) => {
-        if (snapshot) publishWatch(snapshot);
+      .then(async (snapshot) => {
+        if (snapshot) await publishWatch(snapshot, auth.userId);
       })
       .finally(() => {
         watchBinding = undefined;
@@ -217,8 +218,14 @@ async function watchIdentity() {
   await watchBinding;
   return { server, auth };
 }
-function publishWatch(snapshot: WatchStatisticsSnapshot) {
-  if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", snapshot);
+async function publishWatch(snapshot: WatchStatisticsSnapshot, userId: string) {
+  if (!isLiveWindow(window)) return;
+  try {
+    const view = await watchStatistics.getView(snapshot.serverId, userId);
+    if (view && isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", view);
+  } catch (error) {
+    log(`观影统计更新事件失败：${String(error)}`);
+  }
 }
 async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsSnapshot> {
   if (watchRefresh) {
@@ -249,10 +256,10 @@ async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsS
     );
     if (
       !previous ||
-      JSON.stringify([previous.records, previous.media, previous.backfill]) !==
-        JSON.stringify([result.records, result.media, result.backfill])
+      JSON.stringify([previous.records, previous.media, previous.backfill, previous.libraries]) !==
+        JSON.stringify([result.records, result.media, result.backfill, result.libraries])
     )
-      publishWatch(result);
+      await publishWatch(result, auth.userId);
     return result;
   })();
   watchRefresh = task;
@@ -1001,7 +1008,29 @@ function setupIPC() {
     const server = watchServer();
     await watchIdentity().catch(() => {});
     const userId = await watchUserId(server.id);
-    return userId ? watchStatistics.get(server.id, userId) : null;
+    return userId ? watchStatistics.getView(server.id, userId) : null;
+  });
+  handle("app:watch-statistics-correct-library", async (input) => {
+    const parsed = z
+      .object({
+        recordId: z.string().min(1),
+        libraryId: z.string().min(1).nullable(),
+        remember: z.boolean(),
+      })
+      .parse(input);
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
+    const snapshot = await watchStatistics.correctLibrary(
+      server.id,
+      userId,
+      parsed.recordId,
+      parsed.libraryId,
+      parsed.remember,
+    );
+    await publishWatch(snapshot, userId);
+    return snapshot;
   });
   handle("app:watch-statistics-status", () => watchStatus());
   handle("app:watch-statistics-path-status", () => {
@@ -1044,8 +1073,8 @@ function setupIPC() {
     const userId = await watchUserId(server.id);
     if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
     const snapshot = await watchStatistics.settings(server.id, userId, settings);
-    if (snapshot) publishWatch(snapshot);
-    return snapshot;
+    if (snapshot) await publishWatch(snapshot, userId);
+    return snapshot ? watchStatistics.getView(server.id, userId) : null;
   });
   handle("app:watch-statistics-import-preview", async () => {
     const chosen = await dialog.showOpenDialog(window!, {
@@ -1082,9 +1111,9 @@ function setupIPC() {
         watchRefreshMode = undefined;
       }
     }
-    publishWatch(snapshot);
+    await publishWatch(snapshot, targetUserId);
     void syncWatch("incremental").catch((error) => log(String(error)));
-    return snapshot;
+    return (await watchStatistics.getView(server.id, targetUserId)) ?? snapshot;
   });
   handle("app:watch-statistics-export", async () => {
     const server = watchServer();

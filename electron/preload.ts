@@ -3,6 +3,7 @@ import type { DesktopAPI, AppState } from "../src/shared/types";
 
 const api: DesktopAPI = {
   getWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics"),
+  correctWatchLibrary: (input) => ipcRenderer.invoke("app:watch-statistics-correct-library", input),
   refreshWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics-refresh"),
   getWatchStatisticsStatus: () => ipcRenderer.invoke("app:watch-statistics-status"),
   getWatchStatisticsPathStatus: () => ipcRenderer.invoke("app:watch-statistics-path-status"),
