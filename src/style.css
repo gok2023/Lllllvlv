@@ -1,5 +1,53 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./themes/original/style.css";
+@import "./themes/slate/style.css";
+@import "./themes/elysium/style.css";
+
+.theme-surface-art,
+.theme-surface-content,
+.theme-surface-control {
+  background-color: var(--theme-surface-fill, transparent);
+  background-image: var(--theme-surface-texture, none);
+  border-color: var(--theme-surface-stroke, transparent);
+  backdrop-filter: blur(var(--theme-surface-blur, 0px));
+}
+
+:root {
+  --settings-sidebar-width: 216px;
+}
+@media (max-width: 1000px) {
+  :root {
+    --settings-sidebar-width: 190px;
+  }
+}
+@media (max-width: 650px) {
+  :root {
+    --settings-sidebar-width: 150px;
+  }
+}
+:root[data-settings-collapsed="true"] {
+  --settings-sidebar-width: 64px;
+}
+.settings-layout {
+  grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
+}
+.statistics-frame {
+  width: calc(100% - var(--settings-sidebar-width));
+}
+:root[data-settings-collapsed="true"] .settings-layout aside nav button {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  border-radius: 10px;
+}
+:root[data-settings-collapsed="true"] .settings-layout aside nav {
+  margin-left: 0;
+}
+:root[data-settings-collapsed="true"] .settings-layout aside {
+  padding-left: 8px;
+  padding-right: 8px;
+}
 
 @font-face {
   font-family: "Freebo Atma";
@@ -12,7 +60,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", sans-serif;
+  --font-sans: var(--theme-font-body);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -35,45 +83,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-}
-
-:root {
-  color-scheme: light;
-  --background: #fbfcf9;
-  --tab-strip: #e0e8db;
-  --address: #eef3e9;
-  --card: #ffffff;
-  --toolbar: #ffffff;
-  --foreground: #193c35;
-  --muted: #e4ebdf;
-  --muted-foreground: #52675b;
-  --border: #d8e1d3;
-  --input: #a8b99f;
-  --primary: #193c35;
-  --primary-foreground: #fbfcf9;
-  --accent: #eaf3d3;
-  --destructive: #ad3636;
-  --secondary: #edf3e8;
-  --radius: 8px;
-}
-
-:root.dark {
-  color-scheme: dark;
-  --background: #17231f;
-  --tab-strip: #111b17;
-  --address: #111b17;
-  --card: #1d2c25;
-  --toolbar: #213229;
-  --foreground: #f1f6e9;
-  --muted: #34483c;
-  --muted-foreground: #b4c5b2;
-  --border: #3e5546;
-  --input: #667d64;
-  --primary: #bde64d;
-  --primary-foreground: #193c35;
-  --accent: #2e4628;
-  --destructive: #f5a6a1;
-  --secondary: #293d30;
+  --shadow-theme-card: var(--theme-card-shadow);
+  --spacing-theme-section: var(--theme-section-space);
 }
 
 .brand-name {
@@ -94,14 +105,20 @@
     scrollbar-color: var(--muted-foreground) transparent;
   }
   body {
-    @apply bg-background font-sans text-[13px] text-foreground antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: var(--theme-body-size);
+    line-height: var(--theme-body-leading);
     font-synthesis: none;
   }
   h1 {
-    @apply text-[21px] leading-[1.3] font-semibold;
+    @apply font-semibold;
+    font-size: var(--theme-title-size);
+    line-height: var(--theme-title-leading);
   }
   h2 {
-    @apply text-[17px] leading-[1.4] font-semibold;
+    @apply font-semibold;
+    font-size: var(--theme-subtitle-size);
+    line-height: 1.4;
   }
   h3 {
     @apply text-sm leading-normal font-semibold;
@@ -179,7 +196,7 @@
   font-size: 12px;
   cursor: pointer;
   isolation: isolate;
-  transition: color 120ms ease-out;
+  transition: color var(--theme-motion-fast) ease-out;
 }
 .browser-tab::before {
   content: "";

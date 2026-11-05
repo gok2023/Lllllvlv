@@ -1057,6 +1057,86 @@
       #activityStatus:empty {
         display: none;
       }
+      @media screen {
+        :root[data-visual-theme="elysium"] {
+          --bg: transparent;
+          --panel: var(--elysium-content, rgba(23, 28, 32, 0.86));
+          --panel2: var(--elysium-control, rgba(40, 54, 56, 0.9));
+          --line: rgba(238, 232, 218, 0.3);
+          --line2: rgba(238, 232, 218, 0.42);
+          --text: var(--elysium-foreground, #eee8da);
+          --main: var(--elysium-foreground, #eee8da);
+          --sub: var(--elysium-muted, #d6d5c9);
+          --muted: #b7b9b0;
+          --accent: #df9b7a;
+          --accentSoft: rgba(200, 101, 73, 0.2);
+        }
+        :root[data-visual-theme="elysium"] body {
+          background: transparent;
+        }
+        :root[data-visual-theme="elysium"] .name,
+        :root[data-visual-theme="elysium"] h1,
+        :root[data-visual-theme="elysium"] h2 {
+          font-family: Georgia, "SimSun", serif;
+        }
+        :root[data-visual-theme="elysium"] .panel {
+          background: var(--panel);
+          border-color: var(--line);
+        }
+        :root[data-visual-theme="elysium"] .weekday-cell,
+        :root[data-visual-theme="elysium"] .series-row,
+        :root[data-visual-theme="elysium"] .muted-box {
+          background: var(--panel2);
+          border-color: var(--line);
+        }
+        :root[data-visual-theme="elysium"] .bar-track,
+        :root[data-visual-theme="elysium"] .weekday-cell .mini {
+          background: #eee8da30;
+        }
+        :root[data-visual-theme="elysium"] .weekday-cell .mini i {
+          background: var(--accent);
+        }
+        :root[data-visual-theme="elysium"] .link-row:hover,
+        :root[data-visual-theme="elysium"] .activity-table tr:hover td,
+        :root[data-visual-theme="elysium"] .series-tabs button.active,
+        :root[data-visual-theme="elysium"] .paging button:hover:not(:disabled) {
+          background: var(--accentSoft);
+        }
+        :root[data-visual-theme="elysium"] .activity-table thead th,
+        :root[data-visual-theme="elysium"] .paging button {
+          background: var(--panel2);
+          border-color: var(--line);
+        }
+        :root[data-visual-theme="elysium"] .activity-table td {
+          border-color: var(--line);
+        }
+        :root[data-visual-theme="elysium"] .cal-day {
+          background: #eee8da1f;
+        }
+        :root[data-visual-theme="elysium"] .cal-day.empty {
+          background: transparent;
+        }
+        :root[data-visual-theme="elysium"] .cal-day.level1 {
+          background: #9d7266;
+        }
+        :root[data-visual-theme="elysium"] .cal-day.level2 {
+          background: #bd876e;
+        }
+        :root[data-visual-theme="elysium"] .cal-day.level3 {
+          background: #d7a080;
+        }
+        :root[data-visual-theme="elysium"] .cal-day.level4 {
+          background: #f0bb91;
+        }
+        :root[data-visual-theme="elysium"] .import-dialog {
+          background: #263235f5;
+          border-color: var(--line2);
+          color: var(--text);
+        }
+        :root[data-visual-theme="elysium"] .import-dialog::backdrop {
+          background: #101518b8;
+        }
+      }
     </style>
   </head>
   <body>

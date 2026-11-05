@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LoaderCircle } from "lucide-react";
 import { AppContext, useDesktopActions, useRuntime } from "./runtime/context";
 import { useAppTranslation } from "./i18n";
+import { resolveVisualTheme, resolveVisualBackground, visualThemes } from "./shared/visual-themes";
 
 export function App() {
   const runtime = useRuntime();
@@ -13,9 +14,47 @@ export function App() {
   const surface = new URLSearchParams(location.search).get("surface");
   const popup = surface === "servers" || surface === "playback";
   const theme = state?.settings.theme ?? "system";
+  const visualTheme = resolveVisualTheme(state?.settings.visualTheme);
   const pathname = useLocation({ select: (location) => location.pathname });
   const { clearError } = actions;
   useEffect(() => clearError(), [pathname, clearError]);
+  useEffect(() => {
+    document.documentElement.dataset.visualTheme = visualTheme;
+  }, [visualTheme]);
+  useEffect(() => {
+    const root = document.documentElement;
+    const keys = [
+      "image",
+      "position",
+      "art-tint",
+      "content-tint",
+      "control-tint",
+      "mask",
+      "foreground",
+      "muted-foreground",
+    ];
+    const themeDefinition = visualThemes[visualTheme];
+    const id = resolveVisualBackground(visualTheme, state?.settings.visualBackground);
+    const preset =
+      id && "backgrounds" in themeDefinition
+        ? themeDefinition.backgrounds[id as keyof typeof themeDefinition.backgrounds]
+        : undefined;
+    if (!preset) {
+      keys.forEach((key) => root.style.removeProperty(`--theme-background-${key}`));
+      return;
+    }
+    root.style.setProperty(
+      "--theme-background-image",
+      `url("${new URL(preset.file, document.baseURI).href}")`,
+    );
+    root.style.setProperty("--theme-background-position", preset.position);
+    root.style.setProperty("--theme-background-art-tint", preset.artTint);
+    root.style.setProperty("--theme-background-content-tint", preset.contentTint);
+    root.style.setProperty("--theme-background-control-tint", preset.controlTint);
+    root.style.setProperty("--theme-background-mask", preset.mask);
+    root.style.setProperty("--theme-background-foreground", preset.foreground);
+    root.style.setProperty("--theme-background-muted-foreground", preset.mutedForeground);
+  }, [visualTheme, state?.settings.visualBackground]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");

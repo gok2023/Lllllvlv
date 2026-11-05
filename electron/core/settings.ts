@@ -5,6 +5,12 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Settings, Server, Player, CustomPlayerInput } from "../../src/shared/types";
+import {
+  resolveVisualTheme,
+  visualThemeIds,
+  normalizeVisualBackground,
+  visualBackgroundIds,
+} from "../../src/shared/visual-themes";
 
 export function normalizeServerUrl(input: string): string {
   let url: URL;
@@ -41,6 +47,8 @@ export const defaultSettings: Settings = {
   autoNext: true,
   fullscreen: false,
   theme: "system",
+  visualTheme: "original",
+  visualBackground: "skyline",
   language: "system",
   setupCompleted: false,
   playerScanCompleted: false,
@@ -95,6 +103,16 @@ export const settingsSchema = z.object({
   autoNext: z.boolean().default(defaultSettings.autoNext),
   fullscreen: z.boolean().default(defaultSettings.fullscreen),
   theme: z.enum(["system", "dark", "light"]).default(defaultSettings.theme),
+  visualTheme: z.preprocess(
+    resolveVisualTheme,
+    z.custom<Settings["visualTheme"]>((value) => visualThemeIds.some((id) => id === value)),
+  ),
+  visualBackground: z.preprocess(
+    normalizeVisualBackground,
+    z.custom<Settings["visualBackground"]>((value) =>
+      visualBackgroundIds.some((id) => id === value),
+    ),
+  ),
   language: z.enum(["system", "zh", "en"]).default(defaultSettings.language),
   setupCompleted: z.boolean().default(defaultSettings.setupCompleted),
   playerScanCompleted: z.boolean().default(defaultSettings.playerScanCompleted),
@@ -104,7 +122,10 @@ export const settingsSchema = z.object({
   startupVideoSoundEnabled: z.boolean().default(defaultSettings.startupVideoSoundEnabled),
   startupVideoVolume: z.number().min(0).max(100).default(defaultSettings.startupVideoVolume),
   startupVideoName: z.string().optional(),
-  startupVideoFile: z.string().regex(/^[0-9a-f-]{36}\.(mp4|webm)$/).optional(),
+  startupVideoFile: z
+    .string()
+    .regex(/^[0-9a-f-]{36}\.(mp4|webm)$/)
+    .optional(),
 });
 
 export type SettingsDiagnostic =

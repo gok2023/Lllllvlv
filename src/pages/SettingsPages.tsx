@@ -11,6 +11,8 @@ import {
   RefreshCw,
   FolderOpen,
   Volume2,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
@@ -28,6 +30,14 @@ import { DiagnosticsPanel } from "../components/settings/DiagnosticsPanel";
 import { UpdateSettings } from "../components/settings/UpdateSettings";
 import { useApp } from "../runtime/context";
 import { useAppTranslation } from "../i18n";
+import {
+  visualThemeIds,
+  visualThemes,
+  resolveVisualBackground,
+  backgroundsForTheme,
+  elysiumBackgrounds,
+  type VisualThemeId,
+} from "../shared/visual-themes";
 import { settingsPaths } from "../routing";
 import { showProductLinks } from "../shared/product-links";
 
@@ -48,6 +58,13 @@ function Heading({ title, children }: { title: string; children?: ReactNode }) {
   );
 }
 export function SettingsLayout() {
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    document.documentElement.dataset.settingsCollapsed = String(collapsed);
+    return () => {
+      delete document.documentElement.dataset.settingsCollapsed;
+    };
+  }, [collapsed]);
   const { state, clearError } = useApp();
   const { t } = useAppTranslation();
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -55,12 +72,29 @@ export function SettingsLayout() {
   return (
     <div
       className={cn(
-        "grid grid-cols-[216px_minmax(0,1fr)] max-[1000px]:grid-cols-[190px_minmax(0,1fr)] max-[650px]:grid-cols-[150px_minmax(0,1fr)]",
+        "settings-layout grid",
         pathname === settingsPaths.statistics ? "h-full min-h-0" : "min-h-full",
       )}
     >
       <aside className="sticky top-0 flex h-[calc(100vh-88px)] flex-col px-3 py-6 max-[650px]:px-2 max-[650px]:py-5 [&>h1]:mx-4 [&>h1]:mb-6 [&>h1]:text-xl [&>nav]:flex [&>nav]:flex-col [&>nav]:gap-[3px]">
-        <h1>{t("settings")}</h1>
+        <div
+          className={cn(
+            "settings-sidebar-heading flex items-center justify-between gap-1 mb-6",
+            collapsed ? "px-0" : "px-2",
+          )}
+        >
+          {!collapsed && <h1 className="text-xl">{t("settings")}</h1>}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </Button>
+        </div>
         <nav className="-ml-3 max-[650px]:-ml-2" aria-label={t("settings")}>
           {settingPages.map(({ id, icon: Icon }) => (
             <Button
@@ -71,20 +105,26 @@ export function SettingsLayout() {
                 pathname.startsWith(settingsPaths[id]) && "bg-accent text-primary",
               )}
               aria-current={pathname.startsWith(settingsPaths[id]) ? "page" : undefined}
+              aria-label={t(id)}
+              title={t(id)}
               onClick={() => {
                 clearError();
                 void navigate({ to: settingsPaths[id] });
               }}
             >
               <Icon size={17} />
-              <span className="min-w-0 text-left leading-normal whitespace-normal">{t(id)}</span>
+              {!collapsed && (
+                <span className="min-w-0 text-left leading-normal whitespace-normal">{t(id)}</span>
+              )}
             </Button>
           ))}
         </nav>
-        <span className="mx-4 mt-auto pt-6 text-[11px] leading-[1.8] text-muted-foreground">
-          <BrandName className="text-sm" />
-          <br />v{state.version}
-        </span>
+        {!collapsed && (
+          <span className="mx-4 mt-auto pt-6 text-[11px] leading-[1.8] text-muted-foreground">
+            <BrandName className="text-sm" />
+            <br />v{state.version}
+          </span>
+        )}
       </aside>
       <div
         className={cn(
@@ -264,10 +304,10 @@ export function GeneralPage() {
   const { state, update, isPending, run } = useApp();
   const { t } = useAppTranslation();
   const [videoVolume, setVideoVolume] = useState(state.settings.startupVideoVolume);
-  useEffect(
-    () => setVideoVolume(state.settings.startupVideoVolume),
-    [state.settings.startupVideoVolume],
-  );
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setVideoVolume(state.settings.startupVideoVolume));
+    return () => cancelAnimationFrame(frame);
+  }, [state.settings.startupVideoVolume]);
   return (
     <>
       <Heading title={t("general")} />
@@ -283,6 +323,31 @@ export function GeneralPage() {
           ]}
         />
       </SettingRow>
+      <SettingRow title={t("visualTheme")}>
+        <OptionSelect
+          label={t("visualTheme")}
+          value={state.settings.visualTheme}
+          onValueChange={(visualTheme) => update({ visualTheme: visualTheme as VisualThemeId })}
+          options={visualThemeIds.map((id) => ({ value: id, label: visualThemes[id].name }))}
+        />
+      </SettingRow>
+      {backgroundsForTheme(state.settings.visualTheme) && (
+        <SettingRow title={t("visualBackground")}>
+          <OptionSelect
+            label={t("visualBackground")}
+            value={
+              resolveVisualBackground(
+                state.settings.visualTheme,
+                state.settings.visualBackground,
+              ) ?? ""
+            }
+            onValueChange={(visualBackground) => update({ visualBackground })}
+            options={Object.entries(backgroundsForTheme(state.settings.visualTheme) ?? {}).map(
+              ([id, preset]) => ({ value: id, label: preset.name }),
+            )}
+          />
+        </SettingRow>
+      )}
       <SettingRow title={t("language")}>
         <OptionSelect
           label={t("language")}
@@ -393,6 +458,28 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const { runtime, state } = useApp();
   const serverId = state.settings.activeServerId;
+  const syncVisualTheme = () => {
+    const selected = resolveVisualBackground(
+      "elysium",
+      state.settings.visualBackground,
+    ) as keyof typeof elysiumBackgrounds;
+    const preset = elysiumBackgrounds[selected];
+    frame.current?.contentWindow?.postMessage(
+      {
+        channel: "watch-statistics",
+        event: "visual-theme",
+        theme: state.settings.visualTheme === "elysium" ? "elysium" : "original",
+        colors: {
+          contentTint: preset.contentTint,
+          controlTint: preset.controlTint,
+          foreground: preset.foreground,
+          mutedForeground: preset.mutedForeground,
+        },
+      },
+      "*",
+    );
+  };
+  useEffect(syncVisualTheme, [state.settings.visualTheme, state.settings.visualBackground]);
   useEffect(() => {
     const unsubscribe = runtime.api.onWatchStatisticsUpdated((snapshot) => {
       if (snapshot.serverId !== serverId) return;
@@ -474,7 +561,7 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
   return (
     <div
       className={cn(
-        "absolute inset-y-0 right-0 z-10 flex w-[calc(100%-216px)] min-h-0 min-w-0 flex-col bg-background py-4 pr-5 pl-2 max-[1000px]:w-[calc(100%-190px)] max-[1000px]:p-3 max-[650px]:w-[calc(100%-150px)]",
+        "statistics-frame absolute inset-y-0 right-0 z-10 flex min-h-0 min-w-0 flex-col bg-background py-4 pr-5 pl-2 max-[1000px]:p-3",
         !visible && "hidden",
       )}
     >
@@ -482,6 +569,7 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
         ref={frame}
         title="观影统计"
         src="./watch-statistics.html"
+        onLoad={syncVisualTheme}
         className="min-h-0 w-full flex-1 rounded-lg border border-border bg-[#090b0e]"
       />
     </div>

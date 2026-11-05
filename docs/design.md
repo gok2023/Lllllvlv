@@ -177,6 +177,8 @@ components:
 
 # Design System: Freebo
 
+本文记录默认 Original 界面的设计规范。可选 Elysium 的画作首页与材质系统见 [Elysium 设计](elysium.md)；主题扩展契约见 [视觉主题](themes.md)。
+
 ## Overview
 
 **Creative North Star: "The friendly guide dog"**

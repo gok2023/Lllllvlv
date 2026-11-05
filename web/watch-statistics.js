@@ -6,6 +6,27 @@
     const pending = new Map();
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent || event.data?.channel !== "watch-statistics") return;
+      if (event.data.event === "visual-theme") {
+        if (event.data.theme !== "elysium" && event.data.theme !== "original") return;
+        document.documentElement.dataset.visualTheme = event.data.theme;
+        const allowed = {
+          contentTint: "--elysium-content",
+          controlTint: "--elysium-control",
+          foreground: "--elysium-foreground",
+          mutedForeground: "--elysium-muted",
+        };
+        for (const [key, variable] of Object.entries(allowed)) {
+          const value = event.data.colors?.[key];
+          if (
+            event.data.theme === "elysium" &&
+            typeof value === "string" &&
+            /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)
+          )
+            document.documentElement.style.setProperty(variable, value);
+          else document.documentElement.style.removeProperty(variable);
+        }
+        return;
+      }
       if (event.data.event === "updated") {
         if (event.data.snapshot) applySnapshot(event.data.snapshot, !state.snapshot);
         return;
@@ -936,13 +957,13 @@
     state.gap = num(e.target.value) || 15;
     state.activityPage = 1;
     render();
-    save();
+    void save();
   };
   $("excludeShort").onchange = (e) => {
     state.excludeShort = e.target.checked;
     state.activityPage = 1;
     render();
-    save();
+    void save();
   };
   $("includeBackfill").onchange = (e) => {
     state.includeBackfill = e.target.checked;
@@ -952,7 +973,7 @@
       state.calendarYear = null;
     }
     render();
-    save();
+    void save();
   };
   $("recordType").onchange = (e) => {
     state.recordType = e.target.value;
@@ -998,7 +1019,7 @@
     state.activityPage++;
     renderActivities(selectedRecords(), groups(selectedRecords()));
   };
-  load();
+  void load();
   api
     .getWatchStatisticsStatus()
     .then(showSyncStatus)

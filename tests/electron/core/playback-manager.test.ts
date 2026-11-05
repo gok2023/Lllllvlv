@@ -18,6 +18,8 @@ const settings: Settings = {
   autoNext: true,
   fullscreen: false,
   theme: "system",
+  visualTheme: "original",
+  visualBackground: "skyline",
   language: "system",
   setupCompleted: true,
   playerScanCompleted: true,

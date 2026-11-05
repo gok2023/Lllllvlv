@@ -66,7 +66,7 @@ export function SetupGuide() {
       return updated;
     });
   return (
-    <div className="mx-auto flex min-h-full max-w-[760px] flex-col px-9 py-6 max-[650px]:px-5">
+    <div className="setup-guide mx-auto flex min-h-full max-w-[760px] flex-col px-9 py-6 max-[650px]:px-5">
       {step === "welcome" ? (
         <section className="flex flex-1 flex-col items-center justify-center gap-[18px] py-8 text-center [&>h1]:mt-1 [&>p]:max-w-[48ch]">
           <BrandLogo width={280} />

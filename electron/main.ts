@@ -44,6 +44,12 @@ import { SingleInstance } from "./core/single-instance";
 import { z } from "zod";
 import { SettingsStore, customPlayerInputSchema, normalizeWebServiceUrl } from "./core/settings";
 import {
+  visualThemeIds,
+  visualThemes,
+  resolveVisualTheme,
+  visualBackgroundIds,
+} from "../src/shared/visual-themes";
+import {
   WindowStateStore,
   defaultWindowSize,
   minimumWindowSize,
@@ -806,7 +812,7 @@ async function togglePlaybackPopup(anchor: {
       fullscreenable: false,
       skipTaskbar: true,
       hasShadow: true,
-      backgroundColor: nativeTheme.shouldUseDarkColors ? "#17231f" : "#fbfcf9",
+      backgroundColor: nativePalette().background,
       webPreferences: {
         preload: join(__dirname, "preload.cjs"),
         sandbox: true,
@@ -898,7 +904,7 @@ async function toggleServerPopup(anchor: PopupAnchor) {
       fullscreenable: false,
       skipTaskbar: true,
       hasShadow: true,
-      backgroundColor: nativeTheme.shouldUseDarkColors ? "#1d2c25" : "#ffffff",
+      backgroundColor: nativePalette().card,
       webPreferences: {
         preload: join(__dirname, "preload.cjs"),
         sandbox: true,
@@ -1399,6 +1405,16 @@ function setupIPC() {
         autoNext: z.boolean().optional(),
         fullscreen: z.boolean().optional(),
         theme: z.enum(["system", "dark", "light"]).optional(),
+        visualTheme: z
+          .custom<(typeof visualThemeIds)[number]>((value) =>
+            visualThemeIds.some((id) => id === value),
+          )
+          .optional(),
+        visualBackground: z
+          .custom<(typeof visualBackgroundIds)[number]>((value) =>
+            visualBackgroundIds.some((id) => id === value),
+          )
+          .optional(),
         language: z.enum(["system", "zh", "en"]).optional(),
         setupCompleted: z.boolean().optional(),
         runInBackground: z.boolean().optional(),
@@ -1593,14 +1609,24 @@ function setupIPC() {
   });
 }
 
+function nativePalette() {
+  const theme = visualThemes[resolveVisualTheme(store.value.visualTheme)];
+  return nativeTheme.shouldUseDarkColors ? theme.native.dark : theme.native.light;
+}
+
 function updateChrome() {
   if (!window || window.isDestroyed()) return;
   window.setTitle(t("brand"));
+  window.setBackgroundColor(nativePalette().background);
+  if (playbackPopup && !playbackPopup.isDestroyed())
+    playbackPopup.setBackgroundColor(nativePalette().background);
+  if (serverPopup && !serverPopup.isDestroyed())
+    serverPopup.setBackgroundColor(nativePalette().card);
   if (process.platform !== "darwin")
     window.setTitleBarOverlay({
       height: 40,
-      color: nativeTheme.shouldUseDarkColors ? "#111b17" : "#e0e8db",
-      symbolColor: nativeTheme.shouldUseDarkColors ? "#f1f6e9" : "#193c35",
+      color: nativePalette().tab,
+      symbolColor: nativePalette().symbol,
     });
 }
 function buildMenu() {
@@ -1923,11 +1949,11 @@ void app.whenReady().then(async () => {
       : {
           titleBarOverlay: {
             height: 40,
-            color: nativeTheme.shouldUseDarkColors ? "#111b17" : "#e0e8db",
-            symbolColor: nativeTheme.shouldUseDarkColors ? "#f1f6e9" : "#193c35",
+            color: nativePalette().tab,
+            symbolColor: nativePalette().symbol,
           },
         }),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#17231f" : "#fbfcf9",
+    backgroundColor: nativePalette().background,
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       sandbox: true,

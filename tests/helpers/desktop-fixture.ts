@@ -13,6 +13,8 @@ export function createDesktopFixture() {
       autoNext: true,
       fullscreen: false,
       theme: "light",
+      visualTheme: "original",
+      visualBackground: "skyline",
       language: "zh",
       setupCompleted: true,
       playerScanCompleted: true,
@@ -47,15 +49,31 @@ export function createDesktopFixture() {
   }
   const api: DesktopAPI = {
     getWatchStatistics: vi.fn(async () => null),
-    refreshWatchStatistics: vi.fn(async () => { throw new Error("No Jellyfin session"); }),
+    refreshWatchStatistics: vi.fn(async () => {
+      throw new Error("No Jellyfin session");
+    }),
     getWatchStatisticsStatus: vi.fn(async () => ({ playing: false, syncing: false })),
-    getWatchStatisticsPathStatus: vi.fn(async () => ({ local: false, manual: false, needsManualPath: false })),
+    getWatchStatisticsPathStatus: vi.fn(async () => ({
+      local: false,
+      manual: false,
+      needsManualPath: false,
+    })),
     chooseWatchStatisticsPath: vi.fn(async () => null),
-    autoDiscoverWatchStatisticsPath: vi.fn(async () => ({ local: false, manual: false, needsManualPath: false })),
-    clearWatchStatisticsPath: vi.fn(async () => ({ local: false, manual: false, needsManualPath: false })),
+    autoDiscoverWatchStatisticsPath: vi.fn(async () => ({
+      local: false,
+      manual: false,
+      needsManualPath: false,
+    })),
+    clearWatchStatisticsPath: vi.fn(async () => ({
+      local: false,
+      manual: false,
+      needsManualPath: false,
+    })),
     saveWatchStatisticsSettings: vi.fn(async () => null),
     previewWatchStatisticsImport: vi.fn(async () => null),
-    importWatchStatistics: vi.fn(async () => { throw new Error("No backup selected"); }),
+    importWatchStatistics: vi.fn(async () => {
+      throw new Error("No backup selected");
+    }),
     exportWatchStatistics: vi.fn(async () => null),
     onWatchStatisticsUpdated: vi.fn(() => () => {}),
     onWatchStatisticsStatus: vi.fn(() => () => {}),

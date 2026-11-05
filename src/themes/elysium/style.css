@@ -1,0 +1,324 @@
+:root[data-visual-theme="elysium"] {
+  color-scheme: dark;
+  --background: #252d2e;
+  --tab-strip: #171c20;
+  --address: #263235;
+  --card: #344747;
+  --toolbar: #222b2e;
+  --foreground: #eee8da;
+  --muted: #344144;
+  --muted-foreground: #c5c6bd;
+  --border: #66716b;
+  --input: #869088;
+  --primary: #df9b7a;
+  --primary-foreground: #171c20;
+  --accent: #485456;
+  --secondary: #334043;
+  --destructive: #f28e77;
+  --radius: 4px;
+  --theme-card-shadow: 0 12px 34px #080d1240;
+  --theme-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", sans-serif;
+  --theme-body-size: 14px;
+  --theme-title-size: 24px;
+  --theme-subtitle-size: 18px;
+  --theme-control-size: 14px;
+  --theme-body-leading: 1.55;
+  --theme-title-leading: 1.15;
+}
+:root.dark[data-visual-theme="elysium"] {
+  --background: #171c20;
+  --tab-strip: #111619;
+  --address: #202a2d;
+  --card: #293638;
+  --toolbar: #1b2427;
+  --foreground: #eee8da;
+  --muted: #303c3e;
+  --accent: #3d4b4d;
+}
+:root[data-visual-theme="elysium"] .browser-chrome {
+  box-shadow: 0 3px 18px #0e131680;
+  z-index: 2;
+}
+:root[data-visual-theme="elysium"] .tab-strip {
+  border-bottom: 1px solid #eee8da18;
+}
+:root[data-visual-theme="elysium"] .toolbar {
+  background-image: linear-gradient(90deg, #34474740, transparent 60%);
+}
+:root[data-visual-theme="elysium"] .address-bar {
+  border: 1px solid #eee8da29;
+}
+:root[data-visual-theme="elysium"] .theme-surface-art {
+  --theme-surface-fill: var(--theme-background-art-tint);
+  --theme-surface-stroke: #eee8da55;
+  --theme-surface-blur: 0;
+}
+:root[data-visual-theme="elysium"] .theme-surface-content {
+  --theme-surface-fill: var(--theme-background-content-tint);
+  --theme-surface-stroke: #c86549;
+  --theme-surface-blur: 4px;
+}
+:root[data-visual-theme="elysium"] .theme-surface-control {
+  --theme-surface-fill: var(--theme-background-control-tint);
+  --theme-surface-stroke: #eee8da70;
+  --theme-surface-blur: 2px;
+}
+:root[data-visual-theme="elysium"] .theme-surface-art,
+:root[data-visual-theme="elysium"] .theme-surface-content,
+:root[data-visual-theme="elysium"] .theme-surface-control {
+  --theme-surface-texture: repeating-linear-gradient(115deg, #eee8da05 0 1px, transparent 1px 5px);
+  background-color: var(--theme-surface-fill);
+  border-color: var(--theme-surface-stroke);
+  backdrop-filter: blur(var(--theme-surface-blur));
+}
+
+.elysium-home {
+  min-height: 100%;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--theme-background-foreground);
+}
+.elysium-home-art {
+  display: none;
+}
+.elysium-home-mask {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--theme-background-mask);
+}
+.elysium-home-inner {
+  width: min(100%, 1260px);
+  min-height: calc(100vh - 88px);
+  margin: auto;
+  padding: clamp(36px, 5vw, 78px) clamp(32px, 5vw, 76px) 26px;
+  display: flex;
+  flex-direction: column;
+}
+.elysium-kicker {
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: #e4a17e;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.elysium-literary {
+  margin-top: 13px;
+  color: #eee8dadd;
+  font:
+    italic 17px Georgia,
+    "SimSun",
+    serif;
+  text-shadow: 0 2px 10px #101518;
+}
+.elysium-home-heading h1 {
+  max-width: 650px;
+  font-family: Georgia, "SimSun", "Songti SC", serif;
+  font-weight: 400;
+  font-size: clamp(42px, 6vw, 82px);
+  line-height: 1.05;
+  letter-spacing: -0.055em;
+  text-shadow: 0 3px 20px #1015188a;
+}
+.elysium-rule {
+  width: 76px;
+  height: 3px;
+  margin-top: 23px;
+  background: #c86549;
+  box-shadow: 28px 0 0 #eee8da6b;
+}
+.elysium-home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 580px) minmax(190px, 1fr);
+  gap: clamp(24px, 5vw, 90px);
+  align-items: start;
+  margin-top: clamp(36px, 6vh, 72px);
+}
+.elysium-home-columns:not(:has(.elysium-home-aside)) {
+  grid-template-columns: minmax(0, 580px);
+}
+.elysium-home-content {
+  padding: 20px 24px 4px;
+  border-left: 3px solid;
+  box-shadow: 0 18px 45px #080c1099;
+}
+.elysium-home-content section {
+  margin-top: 0;
+}
+.elysium-home-content h2 {
+  font-family: Georgia, "SimSun", "Songti SC", serif;
+  font-size: 26px;
+  font-weight: 400;
+}
+.elysium-home-content section > div {
+  margin: 10px 0 12px;
+}
+.elysium-home-content article > div {
+  border-color: #eee8da33;
+}
+.elysium-home-content article button:first-child {
+  font-size: 15px;
+}
+.elysium-home-content .text-muted-foreground {
+  color: var(--theme-background-muted-foreground);
+}
+.elysium-home-content article button:hover {
+  background: #eee8da1c;
+}
+.elysium-home-content section:has(.brand-logo) {
+  min-height: 290px;
+  padding: 20px 10px;
+}
+.elysium-home-aside {
+  padding-top: 5px;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 19px;
+}
+.elysium-home-aside > button {
+  background: var(--theme-background-control-tint);
+  border-color: #eee8da70;
+  color: #eee8da;
+  min-height: 42px;
+}
+.elysium-aside-caption {
+  font-family: Georgia, serif;
+  font-size: 14px;
+  font-style: italic;
+  color: #eee8dacc;
+  text-shadow: 0 2px 8px #101518;
+}
+.elysium-home-footer {
+  margin-top: auto;
+  padding-top: 45px;
+  max-width: 580px;
+}
+.elysium-home-footer footer {
+  border-color: #eee8da77;
+  background: var(--theme-background-art-tint);
+  padding: 12px 8px 0;
+}
+.elysium-home-footer button {
+  color: #eee8da;
+}
+:root[data-visual-theme="elysium"] .browser-shell {
+  position: relative;
+}
+:root[data-visual-theme="elysium"] .elysium-owned-background {
+  position: absolute;
+  inset: 88px 0 0;
+  background: #171c20 var(--theme-background-image) var(--theme-background-position) / cover
+    no-repeat;
+  pointer-events: none;
+}
+:root[data-visual-theme="elysium"] .browser-shell > main {
+  z-index: 1;
+  background: transparent;
+}
+:root[data-visual-theme="elysium"] .setup-guide {
+  position: relative;
+  color: var(--theme-background-foreground);
+}
+:root[data-visual-theme="elysium"] .setup-guide > section,
+:root[data-visual-theme="elysium"] .setup-guide > ol,
+:root[data-visual-theme="elysium"] .setup-guide > div {
+  background: var(--theme-background-content-tint);
+  border: 1px solid #eee8da55;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+:root[data-visual-theme="elysium"] .setup-guide > section h1,
+:root[data-visual-theme="elysium"] .settings-layout h1,
+:root[data-visual-theme="elysium"] .settings-layout h2 {
+  font-family: Georgia, "SimSun", serif;
+  font-weight: 400;
+}
+:root[data-visual-theme="elysium"] .settings-layout aside {
+  background: var(--theme-background-control-tint);
+  border-right: 1px solid #eee8da44;
+  backdrop-filter: blur(3px);
+}
+:root[data-visual-theme="elysium"] .settings-layout > div > section {
+  background: var(--theme-background-content-tint);
+  border: 1px solid #eee8da44;
+  padding: 22px;
+  backdrop-filter: blur(4px);
+}
+:root[data-visual-theme="elysium"] .settings-layout input,
+:root[data-visual-theme="elysium"] .settings-layout textarea,
+:root[data-visual-theme="elysium"] .setup-guide input {
+  background: #171c20e8;
+  color: #eee8da;
+}
+:root[data-visual-theme="elysium"] .statistics-frame {
+  background: transparent;
+}
+:root[data-visual-theme="elysium"] .statistics-frame iframe {
+  background: transparent;
+}
+:root[data-visual-theme="elysium"] [role="dialog"],
+:root[data-visual-theme="elysium"] [role="menu"],
+:root[data-visual-theme="elysium"] [role="listbox"] {
+  background: #263235f2;
+  color: #eee8da;
+  border-color: #eee8da55;
+}
+:root[data-visual-theme="elysium"] .elysium-enjoy-trigger {
+  position: absolute;
+  right: 26px;
+  top: 106px;
+  z-index: 3;
+  background: #171c20b8;
+  color: #eee8da;
+  border: 1px solid #eee8da66;
+}
+:root[data-visual-theme="elysium"] .elysium-enjoy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  background: #171c20 var(--theme-background-image) var(--theme-background-position) / cover
+    no-repeat;
+}
+@media (max-width: 900px) {
+  .elysium-home-inner {
+    padding: 34px 26px 18px;
+  }
+  .elysium-home-columns {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+  }
+  .elysium-home-content {
+    padding: 16px 16px 2px;
+  }
+  .elysium-aside-caption {
+    display: none;
+  }
+}
+@media (max-width: 650px) {
+  .elysium-home-columns {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    margin-top: 25px;
+  }
+  .elysium-home-aside {
+    align-items: flex-start;
+  }
+  .elysium-home-heading h1 {
+    font-size: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-visual-theme="elysium"] *,
+  :root[data-visual-theme="elysium"] *::before,
+  :root[data-visual-theme="elysium"] *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

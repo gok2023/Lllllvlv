@@ -73,6 +73,8 @@ export interface Settings {
   autoNext: boolean;
   fullscreen: boolean;
   theme: "system" | "dark" | "light";
+  visualTheme: import("./visual-themes").VisualThemeId;
+  visualBackground: import("./visual-themes").VisualBackgroundId;
   language: import("./i18n").Language;
   setupCompleted: boolean;
   playerScanCompleted: boolean;
@@ -297,6 +299,8 @@ export interface DesktopAPI {
         | "autoNext"
         | "fullscreen"
         | "theme"
+        | "visualTheme"
+        | "visualBackground"
         | "language"
         | "setupCompleted"
         | "runInBackground"

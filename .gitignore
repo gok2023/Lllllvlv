@@ -11,3 +11,6 @@ coverage/
 .impeccable/mocks/
 artifacts/private/
 *.log
+/public/themes/elysium/backgrounds/disco-*-wallpaper-4k.png
+/.pnpm-store/
+/.tmp-validation/

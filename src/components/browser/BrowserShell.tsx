@@ -1,5 +1,5 @@
 import { desktopStateKey } from "../../runtime/desktop";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -14,6 +14,7 @@ import {
   RefreshCcwDot,
   Settings2,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
@@ -37,6 +38,27 @@ export function BrowserShell() {
   const page = pageFromPath(pathname);
   const [settingsOpened, setSettingsOpened] = useState(page === "settings");
   const [statisticsOpened, setStatisticsOpened] = useState(pathname === settingsPaths.statistics);
+  const [enjoyBackground, setEnjoyBackground] = useState(false);
+  const showingBackground =
+    enjoyBackground && page === "home" && state.settings.visualTheme === "elysium";
+  const enjoyTrigger = useRef<HTMLButtonElement>(null);
+  const enjoyLayer = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showingBackground) enjoyLayer.current?.focus();
+  }, [showingBackground]);
+  useEffect(() => {
+    if (!showingBackground) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setEnjoyBackground(false);
+        requestAnimationFrame(() => enjoyTrigger.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showingBackground]);
   const [tabs, setTabs] = useState<string[]>(
     state.page === "library" && state.browser.serverId ? [state.browser.serverId] : [],
   );
@@ -55,12 +77,14 @@ export function BrowserShell() {
     [router, runtime],
   );
   const go = (next: "home" | "setup" | "settings", section = state.settingsPage) => {
+    setEnjoyBackground(false);
     clearError();
     if (next === "settings") void navigate({ to: settingsPaths[section] });
     else if (next === "setup") void navigate({ to: "/setup", search: { step: "welcome" } });
     else void navigate({ to: "/" });
   };
   const open = (server: Server) => {
+    setEnjoyBackground(false);
     clearError();
     void navigate({ to: "/library/$serverId", params: { serverId: server.id } });
   };
@@ -97,13 +121,44 @@ export function BrowserShell() {
       ? state.browser.url.startsWith("http")
         ? state.browser.url
         : active.url
-      : `freebo://${page}`;
+      : `lllllvlv://${page}`;
   const loadingPage = page === "library" && state.webStatus === "loading";
   return (
     <div
-      className={`flex h-screen flex-col overflow-hidden platform-${state.platform} ${state.fullscreen ? "fullscreen" : ""}`}
+      className={`browser-shell flex h-screen flex-col overflow-hidden platform-${state.platform} ${state.fullscreen ? "fullscreen" : ""}`}
     >
-      <header className="browser-chrome">
+      {state.settings.visualTheme === "elysium" && (
+        <div className="elysium-owned-background" aria-hidden="true" />
+      )}
+      {page === "home" && state.settings.visualTheme === "elysium" && (
+        <Button
+          inert={showingBackground}
+          ref={enjoyTrigger}
+          variant="ghost"
+          size="icon"
+          className="elysium-enjoy-trigger"
+          aria-label={locale === "zh" ? "欣赏背景" : "Enjoy background"}
+          title={locale === "zh" ? "欣赏背景" : "Enjoy background"}
+          onClick={() => setEnjoyBackground(true)}
+        >
+          <ImageIcon size={18} />
+        </Button>
+      )}
+      {showingBackground && (
+        <div
+          ref={enjoyLayer}
+          className="elysium-enjoy-overlay"
+          role="button"
+          tabIndex={0}
+          aria-label={locale === "zh" ? "退出背景欣赏" : "Exit background view"}
+          onClick={(event) => {
+            event.stopPropagation();
+            setEnjoyBackground(false);
+            requestAnimationFrame(() => enjoyTrigger.current?.focus());
+          }}
+        />
+      )}
+      <header inert={showingBackground} className="browser-chrome">
         <div className="tab-strip">
           <nav className="tabs" aria-label={t("appHome")}>
             <Button
@@ -343,6 +398,7 @@ export function BrowserShell() {
         </div>
       </header>
       <main
+        inert={showingBackground}
         className={`relative min-h-0 flex-1 ${pathname === settingsPaths.statistics ? "overflow-hidden" : "overflow-auto"} ${page === "library" ? "flex flex-col" : ""}`}
       >
         {(error || (state.webError && page === "library")) && (

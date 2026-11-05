@@ -8,6 +8,7 @@ import { serverLabel } from "../shared/servers";
 import type { Server } from "../shared/types";
 import { useApp } from "../runtime/context";
 import { useAppTranslation } from "../i18n";
+import { HomeLayout, HomeTitle } from "../themes/registry";
 
 export function HomePage() {
   const { state } = useApp();
@@ -27,70 +28,76 @@ export function HomePage() {
     else void navigate({ to: "/settings/players" });
   };
   return (
-    <div className="mx-auto flex min-h-full max-w-[960px] flex-col px-9 pt-8 pb-5 max-[650px]:px-5 max-[650px]:pt-6">
-      <div className="flex items-center justify-between gap-5 [&_p]:mt-1.5">
-        <div>
-          <h1>{t("appHome")}</h1>
-        </div>
-        <Button variant="outline" onClick={() => manageServers()}>
-          <Settings2 size={15} />
-          {t("manageServers")}
-        </Button>
-      </div>
-      {state.settings.servers.length ? (
-        <section className="mt-8 [&>div]:mt-2">
-          <h2>{t("servers")}</h2>
-          <div className="my-[30px]">
-            {state.settings.servers.map((server) => (
-              <article key={server.id}>
-                <ServerRow
-                  server={server}
-                  label={`${t("open")} · ${serverLabel(server)}`}
-                  onSelect={() => open(server)}
-                >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`${t("editServer")} · ${serverLabel(server)}`}
-                    title={t("editServer")}
-                    onClick={() => editServer(server)}
-                  >
-                    <Pencil size={16} />
-                  </Button>
-                </ServerRow>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : (
-        <section className="flex flex-1 flex-col items-center justify-center pt-10 pb-15 text-center [&>h2]:text-[19px] [&>p]:mt-2 [&>p]:mb-[22px]">
-          <BrandLogo width={260} className="mb-6" />
-          <h2>{t("homeEmptyTitle")}</h2>
-          <p>{t("homeEmptyDescription")}</p>
-          <Button onClick={() => manageServers(true)}>
-            <Plus size={16} />
-            {t("addServer")}
+    <HomeLayout
+      theme={state.settings.visualTheme}
+      heading={<HomeTitle theme={state.settings.visualTheme}>{t("appHome")}</HomeTitle>}
+      subtitle={t("elysiumTagline")}
+      action={
+        state.settings.visualTheme === "elysium" ? null : (
+          <Button variant="outline" onClick={() => manageServers()}>
+            <Settings2 size={15} />
+            {t("manageServers")}
           </Button>
-        </section>
-      )}
-      <footer className="mt-auto flex items-center justify-between gap-3 border-t pt-3.5 text-xs text-muted-foreground max-[650px]:flex-wrap">
-        <Button variant="link" onClick={() => go("setup")}>
-          {t("setup")}
-        </Button>
-        <Button variant="link" onClick={() => go("settings")}>
-          {currentPlayer ? (
-            <>
-              <PlayerIcon kind={currentPlayer.kind} className="size-5" />
-              {currentPlayer.name}
-            </>
-          ) : (
-            <>
-              <MonitorPlay size={14} />
-              {t("choosePlayer")}
-            </>
-          )}
-        </Button>
-      </footer>
-    </div>
+        )
+      }
+      content={
+        state.settings.servers.length ? (
+          <section className="mt-8 [&>div]:mt-2">
+            <h2>{t("servers")}</h2>
+            <div className="my-[30px]">
+              {state.settings.servers.map((server) => (
+                <article key={server.id}>
+                  <ServerRow
+                    server={server}
+                    label={`${t("open")} · ${serverLabel(server)}`}
+                    onSelect={() => open(server)}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${t("editServer")} · ${serverLabel(server)}`}
+                      title={t("editServer")}
+                      onClick={() => editServer(server)}
+                    >
+                      <Pencil size={16} />
+                    </Button>
+                  </ServerRow>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="flex flex-1 flex-col items-center justify-center pt-10 pb-15 text-center [&>h2]:text-[19px] [&>p]:mt-2 [&>p]:mb-[22px]">
+            <BrandLogo width={260} className="mb-6" />
+            <h2>{t("homeEmptyTitle")}</h2>
+            <p>{t("homeEmptyDescription")}</p>
+            <Button onClick={() => manageServers(true)}>
+              <Plus size={16} />
+              {t("addServer")}
+            </Button>
+          </section>
+        )
+      }
+      footer={
+        <footer className="mt-auto flex items-center justify-between gap-3 border-t pt-3.5 text-xs text-muted-foreground max-[650px]:flex-wrap">
+          <Button variant="link" onClick={() => go("setup")}>
+            {t("setup")}
+          </Button>
+          <Button variant="link" onClick={() => go("settings")}>
+            {currentPlayer ? (
+              <>
+                <PlayerIcon kind={currentPlayer.kind} className="size-5" />
+                {currentPlayer.name}
+              </>
+            ) : (
+              <>
+                <MonitorPlay size={14} />
+                {t("choosePlayer")}
+              </>
+            )}
+          </Button>
+        </footer>
+      }
+    />
   );
 }

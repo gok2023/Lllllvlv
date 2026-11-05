@@ -2,6 +2,8 @@
 
 ## 环境与源码运行
 
+本地 Elysium 画作不随 Git 提交。需要验证该主题时，将用户提供的五张原始 PNG 放到 `public/themes/elysium/backgrounds/`，文件名和资源边界见 [Elysium 设计](elysium.md)。
+
 源码、资源与工具的目录归属见 [架构文档](architecture.md#源码与资源归属)。
 
 使用 Node.js 22.12 或更新版本，以及 `package.json` 指定的 pnpm 版本。

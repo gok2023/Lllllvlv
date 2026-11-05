@@ -12,6 +12,8 @@ export type SettingsPatch = Partial<
     | "autoNext"
     | "fullscreen"
     | "theme"
+    | "visualTheme"
+    | "visualBackground"
     | "language"
     | "setupCompleted"
     | "runInBackground"
