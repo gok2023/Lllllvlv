@@ -28,7 +28,7 @@ it("shows the Cine handoff without fake progress, playback controls or a queue",
       ),
     );
     expect(container.textContent).toContain("Cine · 已交给播放器");
-    expect(container.textContent).toContain("保持 Freebo 运行");
+    expect(container.textContent).toContain("保持 Lllllvlv 运行");
     expect(container.querySelector('[role="slider"]')).toBeNull();
     expect(container.querySelector('[aria-label="暂停"]')).toBeNull();
     expect(container.querySelector('[aria-label="停止"]')).toBeNull();

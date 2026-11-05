@@ -69,7 +69,7 @@ describe("diagnostic information and feedback links", () => {
     expect(productLink("github", diagnostic)).toBe("https://github.com/elonzh/freebo");
     const issue = new URL(productLink("issue", diagnostic));
     expect(issue.origin + issue.pathname).toBe("https://github.com/elonzh/freebo/issues/new");
-    expect(issue.searchParams.get("body")).toContain("Freebo 0.1.0");
+    expect(issue.searchParams.get("body")).toContain("Lllllvlv 0.1.0");
     expect(issue.toString()).not.toContain("private.example.test");
   });
 });

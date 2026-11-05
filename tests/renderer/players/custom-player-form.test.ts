@@ -94,7 +94,7 @@ it("validates URL and managed mpv options, then saves IPC mode without overridin
   await fill("--start={start}\n{url}");
   await act(async () => container.querySelector<HTMLButtonElement>('[role="switch"]')!.click());
   await submit();
-  expect(container.querySelector('[role="alert"]')!.textContent).toContain("由 Freebo 管理");
+  expect(container.querySelector('[role="alert"]')!.textContent).toContain("由 Lllllvlv 管理");
   expect(onSave).not.toHaveBeenCalled();
   await fill("--profile=high-quality\n{url}");
   await submit();

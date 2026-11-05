@@ -134,7 +134,7 @@ it("explains Cine's capabilities after configuring its executable", async () => 
     "linux",
   );
   expect(container.textContent).toContain("/home/me/.local/bin/cine");
-  expect(container.textContent).toContain("不支持 Freebo 续播、连播、轨道选择或进度回传");
+  expect(container.textContent).toContain("不支持 Lllllvlv 续播、连播、轨道选择或进度回传");
 });
 
 it("opens a custom profile for editing without changing the default", async () => {
