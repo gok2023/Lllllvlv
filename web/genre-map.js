@@ -1,0 +1,32 @@
+// Map category labels only. Free-form tags (places, themes, etc.) stay unchanged.
+window.FreeboStatisticsNames ??= {};
+window.FreeboStatisticsNames.genres = [
+  { canonical: "剧情", aliases: ["Drama", "drama", "剧情"] },
+  { canonical: "犯罪", aliases: ["Crime", "crime", "犯罪"] },
+  { canonical: "动作", aliases: ["Action", "action", "动作"] },
+  { canonical: "惊悚", aliases: ["Thriller", "thriller", "惊悚"] },
+  { canonical: "冒险", aliases: ["Adventure", "adventure", "冒险"] },
+  { canonical: "喜剧", aliases: ["Comedy", "comedy", "喜剧"] },
+  { canonical: "奇幻", aliases: ["Fantasy", "fantasy", "奇幻"] },
+  {
+    canonical: "科幻",
+    aliases: ["Science Fiction", "Sci-Fi", "SciFi", "Sci Fi", "science fiction", "科幻"],
+  },
+  { canonical: "战争", aliases: ["War", "war", "战争"] },
+  { canonical: "历史", aliases: ["History", "history", "历史"] },
+  { canonical: "爱情", aliases: ["Romance", "romance", "爱情"] },
+  { canonical: "悬疑", aliases: ["Mystery", "mystery", "Suspense", "悬疑"] },
+  { canonical: "恐怖", aliases: ["Horror", "horror", "恐怖"] },
+  { canonical: "动画", aliases: ["Animation", "Anime", "动画"] },
+  { canonical: "纪录片", aliases: ["Documentary", "纪录", "纪录片"] },
+  { canonical: "家庭", aliases: ["Family", "家庭"] },
+  { canonical: "音乐", aliases: ["Music", "音乐"] },
+  { canonical: "西部", aliases: ["Western", "西部"] },
+  { canonical: "运动", aliases: ["Sport", "Sports"] },
+  { canonical: "歌舞", aliases: ["Musical"] },
+  { canonical: "动作冒险", aliases: ["动作冒险", "Action & Adventure"] },
+  { canonical: "科幻奇幻", aliases: ["Sci-Fi & Fantasy"] },
+  { canonical: "战争政治", aliases: ["War & Politics"] },
+  { canonical: "武术", aliases: ["Martial Arts"] },
+  { canonical: "儿童", aliases: ["Children"] },
+];

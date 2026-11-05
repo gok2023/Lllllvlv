@@ -26,6 +26,7 @@ import { serverLabel } from "../../shared/servers";
 import { useAppTranslation } from "../../i18n";
 import { useApp } from "../../runtime/context";
 import { settingsPaths, pageFromPath } from "../../routing";
+import { StatisticsFrame } from "../../pages/SettingsPages";
 
 export function BrowserShell() {
   const { state, runtime, run, error: actionError, clearError } = useApp();
@@ -35,6 +36,7 @@ export function BrowserShell() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const page = pageFromPath(pathname);
   const [settingsOpened, setSettingsOpened] = useState(page === "settings");
+  const [statisticsOpened, setStatisticsOpened] = useState(pathname === settingsPaths.statistics);
   const [tabs, setTabs] = useState<string[]>(
     state.page === "library" && state.browser.serverId ? [state.browser.serverId] : [],
   );
@@ -44,6 +46,7 @@ export function BrowserShell() {
       router.subscribe("onResolved", ({ toLocation }) => {
         const resolvedPage = pageFromPath(toLocation.pathname);
         if (resolvedPage === "settings") setSettingsOpened(true);
+        if (toLocation.pathname === settingsPaths.statistics) setStatisticsOpened(true);
         if (resolvedPage === "library") {
           const id = runtime.queryClient.getQueryData<AppState>(desktopStateKey)?.browser.serverId;
           if (id) setTabs((current) => (current.includes(id) ? current : [...current, id]));
@@ -340,7 +343,7 @@ export function BrowserShell() {
         </div>
       </header>
       <main
-        className={`relative flex-1 overflow-auto ${page === "library" ? "flex flex-col" : ""}`}
+        className={`relative min-h-0 flex-1 ${pathname === settingsPaths.statistics ? "overflow-hidden" : "overflow-auto"} ${page === "library" ? "flex flex-col" : ""}`}
       >
         {(error || (state.webError && page === "library")) && (
           <div
@@ -361,6 +364,12 @@ export function BrowserShell() {
           </div>
         )}
         <Outlet />
+        {statisticsOpened && (
+          <StatisticsFrame
+            key={state.settings.activeServerId || "none"}
+            visible={pathname === settingsPaths.statistics}
+          />
+        )}
       </main>
     </div>
   );

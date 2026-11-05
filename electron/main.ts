@@ -21,7 +21,16 @@ import {
 import { join, extname, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { release } from "node:os";
-import { writeFile, access, mkdir, copyFile, rename, unlink, stat } from "node:fs/promises";
+import {
+  writeFile,
+  access,
+  mkdir,
+  copyFile,
+  rename,
+  unlink,
+  stat,
+  readdir,
+} from "node:fs/promises";
 import { constants, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -71,6 +80,12 @@ import { applicationDirectories, openApplicationDirectory } from "./core/app-dir
 import { AppLifecycle } from "./core/app-lifecycle";
 import { UpdateManager, hasMacUpdateSignature, updateDisabledReason } from "./core/updates";
 import { autoUpdater } from "electron-updater";
+import { WatchStatisticsStore } from "./core/watch-statistics";
+import { WatchStatisticsPathLocator } from "./core/watch-statistics-path";
+import type {
+  WatchStatisticsSettings,
+  WatchStatisticsSnapshot,
+} from "../src/shared/watch-statistics";
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "freebo-startup", privileges: { standard: true, secure: true, stream: true } },
@@ -95,6 +110,218 @@ const store = new SettingsStore(join(userDataPath, "settings.json"), (event) => 
     );
 });
 const windowStateStore = new WindowStateStore(join(userDataPath, "window-state.json"));
+const watchPathLocator = new WatchStatisticsPathLocator(userDataPath);
+const watchStatistics = new WatchStatisticsStore(userDataPath, watchPathLocator);
+let watchRefresh: Promise<unknown> | undefined;
+let watchRefreshMode: "full" | "incremental" | "import" | undefined;
+let watchQueuedFull: Promise<WatchStatisticsSnapshot> | undefined;
+let watchAuth:
+  | { serverId: string; auth: { baseUrl: string; userId: string; token: string } }
+  | undefined;
+let watchImportPath: string | undefined;
+const pendingWatchUserId = "00000000000000000000000000000000";
+let watchPlaying = false;
+let watchStoppedAt = 0;
+let watchLastCheck = 0;
+let watchLastFallback = 0;
+let watchError: string | undefined;
+let watchBinding: Promise<void> | undefined;
+function watchStatus() {
+  return { playing: watchPlaying, syncing: !!watchRefresh || !!watchQueuedFull, error: watchError };
+}
+function publishWatchStatus() {
+  if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-status", watchStatus());
+}
+const watchUserPath = join(userDataPath, "watch-statistics", "current-user.json");
+function watchServer() {
+  const server = store.value.servers.find(
+    (item) => item.id === store.value.activeServerId && item.providerId === "jellyfin",
+  );
+  if (!server) throw new Error("请先选择 Jellyfin 服务");
+  return server;
+}
+async function rememberWatchUser(serverId: string, userId: string) {
+  await mkdir(join(userDataPath, "watch-statistics"), { recursive: true });
+  await writeFile(watchUserPath, JSON.stringify({ serverId, userId }));
+}
+async function watchUserId(serverId: string) {
+  if (watchAuth?.serverId === serverId) return watchAuth.auth.userId;
+  try {
+    const remembered = JSON.parse(
+      await (await import("node:fs/promises")).readFile(watchUserPath, "utf8"),
+    );
+    if (
+      remembered.serverId === serverId &&
+      typeof remembered.userId === "string" &&
+      /^[0-9a-f]{32}$/i.test(remembered.userId.replace(/-/g, ""))
+    )
+      return remembered.userId;
+  } catch {
+    /* Existing snapshots predate the current-user hint. */
+  }
+  try {
+    const files = (await readdir(join(userDataPath, "watch-statistics"))).filter(
+      (name) =>
+        name.startsWith(`${serverId}-`) && name.endsWith(".json") && name !== "current-user.json",
+    );
+    if (files.length === 1) {
+      const userId = files[0].slice(serverId.length + 1, -5);
+      if (/^[0-9a-f]{32}$/i.test(userId)) return userId;
+    }
+  } catch {
+    /* No local statistics yet. */
+  }
+  return undefined;
+}
+async function watchIdentity() {
+  const server = watchServer();
+  let auth: { baseUrl: string; userId: string; token: string } | undefined;
+  if (activeServer?.id === server.id && guest && !guest.webContents.isDestroyed()) {
+    try {
+      auth = await guest.webContents.executeJavaScript(
+        `(() => { const api = window.ApiClient; return api && {baseUrl:api.serverAddress?.(),userId:api.getCurrentUserId?.(),token:api.accessToken?.()}; })()`,
+      );
+    } catch {
+      /* Jellyfin may still be loading. */
+    }
+  }
+  if (!auth?.baseUrl || !auth?.userId || !auth?.token)
+    auth = watchAuth?.serverId === server.id ? watchAuth.auth : undefined;
+  if (
+    !auth?.baseUrl ||
+    !auth?.userId ||
+    !auth?.token ||
+    new URL(auth.baseUrl).origin !== new URL(server.url).origin
+  )
+    throw new Error("请先在「服务」中登录 Jellyfin");
+  if (!/^[0-9a-f]{32}$/i.test(auth.userId.replace(/-/g, "")))
+    throw new Error("Jellyfin 用户 ID 无效");
+  watchAuth = { serverId: server.id, auth };
+  void rememberWatchUser(server.id, auth.userId).catch((error) => log(String(error)));
+  if (!watchBinding) {
+    watchBinding = watchStatistics
+      .bindImported(server.id, pendingWatchUserId, auth.userId)
+      .then((snapshot) => {
+        if (snapshot) publishWatch(snapshot);
+      })
+      .finally(() => {
+        watchBinding = undefined;
+      });
+  }
+  await watchBinding;
+  return { server, auth };
+}
+function publishWatch(snapshot: WatchStatisticsSnapshot) {
+  if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", snapshot);
+}
+async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsSnapshot> {
+  if (watchRefresh) {
+    if (watchRefreshMode === "import") {
+      await watchRefresh.catch(() => {});
+      return syncWatch(mode);
+    }
+    if (mode === "incremental") return watchRefresh as Promise<WatchStatisticsSnapshot>;
+    if (watchRefreshMode === "full") return watchRefresh as Promise<WatchStatisticsSnapshot>;
+    if (!watchQueuedFull) {
+      watchQueuedFull = watchRefresh.catch(() => {}).then(() => syncWatch("full"));
+      void watchQueuedFull
+        .finally(() => {
+          watchQueuedFull = undefined;
+        })
+        .catch(() => {});
+    }
+    return watchQueuedFull;
+  }
+  const task = (async () => {
+    const { server, auth } = await watchIdentity();
+    const previous = await watchStatistics.get(server.id, auth.userId);
+    const result = await watchStatistics.refresh(
+      server.id,
+      auth,
+      browserFetcher(session.fromPartition(servicePartition(server)), server.url) as typeof fetch,
+      mode,
+    );
+    if (
+      !previous ||
+      JSON.stringify([previous.records, previous.media, previous.backfill]) !==
+        JSON.stringify([result.records, result.media, result.backfill])
+    )
+      publishWatch(result);
+    return result;
+  })();
+  watchRefresh = task;
+  watchRefreshMode = mode;
+  watchError = undefined;
+  publishWatchStatus();
+  try {
+    return await task;
+  } catch (error) {
+    watchError = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    if (watchRefresh === task) {
+      watchRefresh = undefined;
+      watchRefreshMode = undefined;
+      publishWatchStatus();
+    }
+  }
+}
+async function watchTick() {
+  if (lifecycle.isQuitting || !store.value.setupCompleted) return;
+  let server: Server;
+  try {
+    server = watchServer();
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  const statisticsOpen = page === "settings" && settingsPage === "statistics";
+  if (now - watchLastCheck < (statisticsOpen ? 60_000 : 120_000)) return;
+  watchLastCheck = now;
+  let active = false;
+  try {
+    const { auth } = await watchIdentity();
+    const fetcher = browserFetcher(
+      session.fromPartition(servicePartition(server)),
+      server.url,
+    ) as typeof fetch;
+    const response = await fetcher(`${auth.baseUrl.replace(/\/$/, "")}/Sessions`, {
+      headers: { "X-Emby-Token": auth.token },
+    });
+    if (response.ok) {
+      const sessions = (await response.json()) as { UserId?: string; NowPlayingItem?: unknown }[];
+      active = sessions.some(
+        (item) =>
+          item.UserId?.replace(/-/g, "").toLowerCase() ===
+            auth.userId.replace(/-/g, "").toLowerCase() && !!item.NowPlayingItem,
+      );
+    }
+  } catch {
+    /* The incremental fallback also covers unavailable session data. */
+  }
+  if (active) {
+    watchPlaying = true;
+    publishWatchStatus();
+    if (statisticsOpen) void syncWatch("incremental").catch((error) => log(String(error)));
+  } else if (watchPlaying) {
+    watchPlaying = false;
+    publishWatchStatus();
+    watchStoppedAt = now;
+    setTimeout(() => {
+      if (!watchPlaying && watchStoppedAt === now) {
+        watchStoppedAt = 0;
+        void syncWatch("incremental").catch((error) => log(String(error)));
+      }
+    }, 30_000).unref();
+  }
+  if (watchStoppedAt && now - watchStoppedAt >= 30_000) {
+    watchStoppedAt = 0;
+    void syncWatch("incremental").catch((error) => log(String(error)));
+  } else if (now - watchLastFallback >= (statisticsOpen ? 60_000 : 300_000)) {
+    watchLastFallback = now;
+    void syncWatch("incremental").catch((error) => log(String(error)));
+  }
+}
 const startupVideoDirectory = join(userDataPath, "startup-video");
 let startupVideoAvailable = true;
 let startupVideoFullscreen = false;
@@ -123,7 +350,11 @@ async function setStartupVideo(source: string) {
     const previousFile = store.value.startupVideoFile;
     await rename(temporary, target);
     try {
-      await store.save({ ...store.value, startupVideoFile: targetName, startupVideoName: basename(source) });
+      await store.save({
+        ...store.value,
+        startupVideoFile: targetName,
+        startupVideoName: basename(source),
+      });
     } catch (error) {
       if (store.value.startupVideoFile === targetName) {
         store.value.startupVideoFile = previousFile;
@@ -484,6 +715,14 @@ async function openServer(id: string, destination?: string) {
     webError = undefined;
     layout();
     publish();
+    if (server.providerId === "jellyfin") {
+      setTimeout(() => {
+        if (guest !== view) return;
+        void watchIdentity()
+          .then(() => syncWatch("incremental"))
+          .catch(() => {});
+      }, 3000);
+    }
   });
   view.webContents.on("did-fail-load", (_event, code, _description, _url, mainFrame) => {
     if (!mainFrame || code === -3 || guest !== view) return;
@@ -711,11 +950,150 @@ function setupIPC() {
         return await callback(input);
       } catch (error) {
         log(String(error));
+        if (channel.startsWith("app:watch-statistics-path-") && error instanceof Error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") throw new Error("数据库文件不存在，请重新选择");
+          if (code === "EACCES" || code === "EPERM")
+            throw new Error("无法读取数据库文件，请检查访问权限");
+          if (code === "EBUSY") throw new Error("数据库文件正被占用，请稍后重试");
+          if (
+            [
+              "本机数据库",
+              "请选择 Playback Reporting",
+              "所选文件",
+              "远程 Jellyfin",
+              "Playback Reporting 接口不可用",
+              "无法核实",
+              "无法自动定位",
+            ].some((prefix) => error.message.startsWith(prefix))
+          )
+            throw new Error(error.message);
+          throw new Error("无法读取 Playback Reporting 数据库，请检查所选文件");
+        }
+        if (channel.startsWith("app:watch-statistics") && error instanceof Error)
+          throw new Error(
+            channel.includes("import") || channel.includes("export")
+              ? error.message
+              : [
+                    "Jellyfin 请求失败",
+                    "Jellyfin 媒体",
+                    "请先",
+                    "Playback Reporting",
+                    "播放记录缺少必需字段",
+                    "播放记录日期无效",
+                    "Jellyfin 用户 ID 无效",
+                  ].some((prefix) => error.message.startsWith(prefix))
+                ? error.message
+                : "观影统计刷新失败，请检查 Jellyfin 和 Playback Reporting",
+          );
         if (error instanceof UserFacingError) throw error;
         throw new UserFacingError(error instanceof z.ZodError ? "invalidInput" : "actionFailed");
       }
     });
   handle("app:state", () => state());
+  handle("app:watch-statistics", async () => {
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    return userId ? watchStatistics.get(server.id, userId) : null;
+  });
+  handle("app:watch-statistics-status", () => watchStatus());
+  handle("app:watch-statistics-path-status", () => {
+    const server = watchServer();
+    return watchPathLocator.status(server.id, server.url);
+  });
+  handle("app:watch-statistics-path-choose", async () => {
+    const server = watchServer();
+    const chosen = await dialog.showOpenDialog(window!, {
+      properties: ["openFile"],
+      filters: [{ name: "Playback Reporting 数据库", extensions: ["db"] }],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return null;
+    await watchPathLocator.setManual(server.id, server.url, chosen.filePaths[0]);
+    return watchPathLocator.status(server.id, server.url);
+  });
+  handle("app:watch-statistics-path-discover", async () => {
+    const server = watchServer();
+    await watchPathLocator.discover(server.id, server.url, true);
+    return watchPathLocator.status(server.id, server.url);
+  });
+  handle("app:watch-statistics-path-clear", async () => {
+    const server = watchServer();
+    await watchPathLocator.clearManual(server.id, server.url);
+    return watchPathLocator.status(server.id, server.url);
+  });
+  handle("app:watch-statistics-refresh", () => {
+    void syncWatch("full").catch((error) => log(String(error)));
+  });
+  handle("app:watch-statistics-settings", async (input) => {
+    const settings = z
+      .object({
+        gapMinutes: z.number().min(0).max(240),
+        includeBackfill: z.boolean(),
+        excludeShort: z.boolean(),
+      })
+      .parse(input) as WatchStatisticsSettings;
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
+    const snapshot = await watchStatistics.settings(server.id, userId, settings);
+    if (snapshot) publishWatch(snapshot);
+    return snapshot;
+  });
+  handle("app:watch-statistics-import-preview", async () => {
+    const chosen = await dialog.showOpenDialog(window!, {
+      properties: ["openFile"],
+      filters: [{ name: "观影统计备份", extensions: ["json"] }],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return null;
+    watchImportPath = chosen.filePaths[0];
+    return watchStatistics.previewImport(watchImportPath);
+  });
+  handle("app:watch-statistics-import", async (input) => {
+    z.literal("replace").parse(input);
+    if (!watchImportPath) throw new Error("请先选择导入文件");
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    const targetUserId = userId ?? pendingWatchUserId;
+    const path = watchImportPath;
+    watchImportPath = undefined;
+    const previous = watchRefresh;
+    const task =
+      previous
+        ?.catch(() => {})
+        .then(() => watchStatistics.importData(server.id, targetUserId, path)) ??
+      watchStatistics.importData(server.id, targetUserId, path);
+    watchRefresh = task;
+    watchRefreshMode = "import";
+    let snapshot: WatchStatisticsSnapshot;
+    try {
+      snapshot = await task;
+    } finally {
+      if (watchRefresh === task) {
+        watchRefresh = undefined;
+        watchRefreshMode = undefined;
+      }
+    }
+    publishWatch(snapshot);
+    void syncWatch("incremental").catch((error) => log(String(error)));
+    return snapshot;
+  });
+  handle("app:watch-statistics-export", async () => {
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
+    if (watchRefresh) await watchRefresh.catch(() => {});
+    const chosen = await dialog.showSaveDialog(window!, {
+      defaultPath: `Lllllvlv-观影统计-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "观影统计备份", extensions: ["json"] }],
+    });
+    if (chosen.canceled || !chosen.filePath) return null;
+    await watchStatistics.exportData(server.id, userId, chosen.filePath);
+    return chosen.filePath;
+  });
   handle("app:restart", async () => {
     if (lifecycle.isQuitting) return;
     await lifecycle.prepareToQuit();
@@ -769,9 +1147,16 @@ function setupIPC() {
       const previousFile = store.value.startupVideoFile;
       const previousName = store.value.startupVideoName;
       try {
-        await store.save({ ...store.value, startupVideoFile: undefined, startupVideoName: undefined });
+        await store.save({
+          ...store.value,
+          startupVideoFile: undefined,
+          startupVideoName: undefined,
+        });
       } catch (error) {
-        if (store.value.startupVideoFile === undefined && store.value.startupVideoName === undefined) {
+        if (
+          store.value.startupVideoFile === undefined &&
+          store.value.startupVideoName === undefined
+        ) {
           store.value.startupVideoFile = previousFile;
           store.value.startupVideoName = previousName;
         }
@@ -896,7 +1281,9 @@ function setupIPC() {
     const request = z
       .object({
         page: z.enum(["home", "library", "settings", "setup"]),
-        section: z.enum(["players", "general", "servers", "diagnostics", "about"]).optional(),
+        section: z
+          .enum(["players", "general", "servers", "statistics", "diagnostics", "about"])
+          .optional(),
       })
       .parse(input);
     page = request.page;
@@ -1342,9 +1729,7 @@ function createTray() {
       app.isPackaged ? process.resourcesPath : join(__dirname, "../resources"),
       "tray",
     );
-    const image = nativeImage.createFromPath(
-      join(directory, "trayColor.png"),
-    );
+    const image = nativeImage.createFromPath(join(directory, "trayColor.png"));
     if (image.isEmpty()) throw new Error("Tray icon is missing");
     tray = new Tray(image);
     tray.on("click", showMainWindow);
@@ -1414,16 +1799,18 @@ async function setupUpdates() {
   // Keep the upstream updater integration available for a future release.
   const upstreamUpdatesEnabled = false;
   const packageType = join(process.resourcesPath, "package-type");
-  const reason = !upstreamUpdatesEnabled ? "fork-disabled" : updateDisabledReason({
-    packaged: app.isPackaged,
-    platform: process.platform as Platform,
-    portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE),
-    appImage: Boolean(process.env.APPIMAGE),
-    deb: existsSync(packageType) && readFileSync(packageType, "utf8").trim() === "deb",
-    macSigned:
-      process.platform !== "darwin" ||
-      (app.isPackaged && (await hasMacUpdateSignature(process.execPath))),
-  });
+  const reason = !upstreamUpdatesEnabled
+    ? "fork-disabled"
+    : updateDisabledReason({
+        packaged: app.isPackaged,
+        platform: process.platform as Platform,
+        portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE),
+        appImage: Boolean(process.env.APPIMAGE),
+        deb: existsSync(packageType) && readFileSync(packageType, "utf8").trim() === "deb",
+        macSigned:
+          process.platform !== "darwin" ||
+          (app.isPackaged && (await hasMacUpdateSignature(process.execPath))),
+      });
   updates = new UpdateManager(reason ? undefined : autoUpdater, reason, log);
   updates.on("install-failed", () => {
     void lifecycle
@@ -1496,7 +1883,8 @@ void app.whenReady().then(async () => {
   await store.load();
   protocol.handle("freebo-startup", (request) => {
     const url = new URL(request.url);
-    if (url.host !== "video" || url.pathname !== "/current") return new Response(null, { status: 404 });
+    if (url.host !== "video" || url.pathname !== "/current")
+      return new Response(null, { status: 404 });
     const path = startupVideoPath();
     if (!path) return new Response(null, { status: 404 });
     return net.fetch(pathToFileURL(path).toString(), { headers: request.headers });
@@ -1547,7 +1935,8 @@ void app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   });
-  if (!startupVideoFullscreen && (store.value.fullscreen || savedWindow?.maximized)) window.maximize();
+  if (!startupVideoFullscreen && (store.value.fullscreen || savedWindow?.maximized))
+    window.maximize();
   let windowStateTimer: ReturnType<typeof setTimeout> | undefined;
   const saveWindowState = () => {
     clearTimeout(windowStateTimer);
@@ -1630,6 +2019,49 @@ void app.whenReady().then(async () => {
   if (process.env.FREEBO_DEV_URL) await window.loadURL(process.env.FREEBO_DEV_URL);
   else await window.loadFile(join(__dirname, "../dist/index.html"));
   instance.windowReady();
+  const startupServer = store.value.servers.find(
+    (item) => item.id === store.value.activeServerId && item.providerId === "jellyfin",
+  );
+  if (startupServer) {
+    void (async () => {
+      const hidden = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          partition: servicePartition(startupServer),
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+      try {
+        await hidden.loadURL(jellyfinProvider.entryUrl(startupServer));
+        for (let attempt = 0; attempt < 10 && !lifecycle.isQuitting; attempt++) {
+          const auth = await hidden.webContents.executeJavaScript(
+            `(() => { const api = window.ApiClient; return api && {baseUrl:api.serverAddress?.(),userId:api.getCurrentUserId?.(),token:api.accessToken?.()}; })()`,
+          );
+          if (
+            auth?.baseUrl &&
+            auth?.userId &&
+            auth?.token &&
+            new URL(auth.baseUrl).origin === new URL(startupServer.url).origin
+          ) {
+            watchAuth = { serverId: startupServer.id, auth };
+            await rememberWatchUser(startupServer.id, auth.userId);
+            await syncWatch("incremental");
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        log(String(error));
+      } finally {
+        if (!hidden.isDestroyed()) hidden.destroy();
+      }
+    })();
+  }
+  const watchTimer = setInterval(() => void watchTick(), 30_000);
+  watchTimer.unref();
+  app.once("will-quit", () => clearInterval(watchTimer));
   await setupUpdates();
 });
 app.on("before-quit", (event) => {

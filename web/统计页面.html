@@ -1,0 +1,1424 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>观影统计</title>
+    <style>
+      :root {
+        --bg: #090b0e;
+        --panel: #101318;
+        --panel2: #151922;
+        --line: #272d36;
+        --line2: #353b45;
+        --text: #f2f0eb;
+        --main: #d9d1c6;
+        --sub: #aab0bb;
+        --muted: #777f8d;
+        --accent: #e1d7c9;
+        --accentSoft: rgba(225, 215, 201, 0.11);
+        --green: #a2b6a0;
+        --red: #c18b85;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--sub);
+        font-family: "Segoe UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      body:before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.025;
+        z-index: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 170 170' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      main {
+        position: relative;
+        max-width: 1600px;
+        margin: auto;
+        padding: 28px 24px 64px;
+      }
+      button,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      a {
+        color: var(--accent);
+      }
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 22px;
+        padding-bottom: 21px;
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+      .identity {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+      }
+      .mark {
+        height: 12px;
+        width: 12px;
+        flex-shrink: 0;
+        border: 2px solid var(--accent);
+        border-radius: 50%;
+        box-shadow: 0 0 15px #e2d9ce33;
+      }
+      .name {
+        margin: 0;
+        color: var(--text);
+        font-family: "Noto Serif SC", "SimSun", serif;
+        font-size: 25px;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+      }
+      .subtitle {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .top-actions {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .seg {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        padding: 3px;
+        display: flex;
+        gap: 2px;
+        border-radius: 8px;
+        flex-wrap: wrap;
+      }
+      .seg button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 9px 12px;
+        border-radius: 5px;
+        white-space: nowrap;
+      }
+      .seg button:hover {
+        color: var(--text);
+      }
+      .seg button.active {
+        background: #30343b;
+        color: var(--text);
+      }
+      .soft-btn {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: var(--sub);
+        padding: 10px 12px;
+        font-size: 12px;
+      }
+      .soft-btn:hover {
+        border-color: var(--line2);
+        color: var(--text);
+      }
+      .notice {
+        padding: 13px 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.8;
+      }
+      .notice strong {
+        color: var(--main);
+        font-weight: 500;
+      }
+      .section {
+        margin-top: 39px;
+      }
+      .section-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .section-title {
+        display: flex;
+        align-items: baseline;
+        gap: 11px;
+        min-width: 0;
+      }
+      .section-index {
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+      }
+      h2 {
+        font-family: "Noto Serif SC", "SimSun", serif;
+        font-size: 20px;
+        color: var(--text);
+        font-weight: 600;
+        letter-spacing: 0.035em;
+        margin: 0;
+      }
+      h3 {
+        font-size: 15px;
+        font-weight: 550;
+        color: var(--text);
+        margin: 0;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        overflow: hidden;
+      }
+      .panel-inner {
+        padding: 23px 25px;
+      }
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: start;
+        flex-wrap: wrap;
+        margin-bottom: 21px;
+      }
+      .panel-head p {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 6px 0 0;
+        line-height: 1.6;
+      }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .kpi {
+        padding: 23px 22px;
+        min-height: 152px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .kpi-label {
+        font-size: 13px;
+        color: var(--sub);
+      }
+      .kpi-value {
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: -0.045em;
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+        line-height: 1.15;
+        margin: 13px 0 9px;
+      }
+      .kpi-value span {
+        font-size: 15px;
+        letter-spacing: 0;
+        font-weight: 400;
+        margin-left: 6px;
+        color: var(--muted);
+      }
+      .kpi-foot {
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+      .quiet-strong {
+        color: var(--accent);
+      }
+      .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-bottom: 19px;
+      }
+      .calendar-scroll {
+        overflow: auto;
+        padding-bottom: 8px;
+      }
+      .calendar-body {
+        display: flex;
+        gap: 12px;
+        min-width: 815px;
+      }
+      .days-axis {
+        width: 31px;
+        display: grid;
+        grid-template-rows: repeat(7, 12px);
+        row-gap: 4px;
+        padding-top: 19px;
+        font-size: 10px;
+        color: var(--muted);
+        flex: none;
+      }
+      .month-and-grid {
+        flex: 1;
+      }
+      .month-names {
+        display: grid;
+        grid-template-columns: repeat(53, 1fr);
+        gap: 3px;
+        height: 19px;
+        position: relative;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .months-label {
+        white-space: nowrap;
+        transform: translateX(0);
+      }
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(53, minmax(0, 1fr));
+        gap: 3px;
+        align-items: start;
+      }
+      .calendar-week {
+        display: grid;
+        grid-template-rows: repeat(7, 12px);
+        gap: 4px;
+      }
+      .cal-day {
+        min-width: 8px;
+        width: 100%;
+        height: 12px;
+        border: none;
+        border-radius: 2px;
+        padding: 0;
+        background: #1b1e24;
+        transition:
+          transform 0.12s,
+          border-color 0.12s;
+      }
+      .cal-day.active {
+        cursor: pointer;
+      }
+      .cal-day.active:hover {
+        transform: scale(1.35);
+        outline: 1px solid var(--text);
+        position: relative;
+        z-index: 1;
+      }
+      .cal-day.empty {
+        background: transparent;
+        pointer-events: none;
+      }
+      .cal-day.out {
+        opacity: 0.25;
+      }
+      .cal-day.level1 {
+        background: #444955;
+      }
+      .cal-day.level2 {
+        background: #757b87;
+      }
+      .cal-day.level3 {
+        background: #a4a8ad;
+      }
+      .cal-day.level4 {
+        background: var(--accent);
+      }
+      .legend {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .legend i {
+        display: block;
+        width: 11px;
+        height: 11px;
+        border-radius: 2px;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 13px;
+      }
+      .chart {
+        height: 174px;
+        display: flex;
+        align-items: end;
+        gap: 5px;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 3px;
+      }
+      .hour-bar-wrap {
+        flex: 1;
+        height: 100%;
+        display: flex;
+        align-items: end;
+        position: relative;
+        min-width: 0;
+      }
+      .hour-bar {
+        width: 100%;
+        background: #636a76;
+        min-height: 2px;
+        border-radius: 2px 2px 0 0;
+        transition: background 0.2s;
+      }
+      .hour-bar-wrap:hover .hour-bar {
+        background: var(--accent);
+      }
+      .axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+      .weekday-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+      }
+      .weekday-cell {
+        min-width: 0;
+        background: #0c0e12;
+        border: 1px solid #23272d;
+        border-radius: 6px;
+        padding: 12px 9px;
+      }
+      .weekday-cell b {
+        display: block;
+        color: var(--text);
+        font-weight: 500;
+        font-size: 13px;
+        margin: 10px 0;
+      }
+      .weekday-cell span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .weekday-cell .mini {
+        height: 3px;
+        background: #252a30;
+        margin-top: 9px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .weekday-cell .mini i {
+        display: block;
+        height: 100%;
+        background: #999c9f;
+      }
+      .bar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .bar-row {
+        padding: 3px 0;
+      }
+      .bar-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+      .bar-meta strong {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .bar-meta small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .bar-track {
+        background: #25282e;
+        height: 7px;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        background: var(--accent);
+        height: 100%;
+        border-radius: 10px;
+      }
+      .link-row {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 8px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .link-row:hover {
+        background: #1b2028;
+      }
+      .link-row.is-picked {
+        border-color: #8e8478;
+        background: var(--accentSoft);
+      }
+      .series-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .series-row {
+        padding: 12px;
+        background: #0c0e12;
+        border: 1px solid #23272d;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .series-row:hover {
+        border-color: #555b66;
+      }
+      .series-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .series-name {
+        font-size: 13px;
+        color: var(--text);
+        font-weight: 500;
+      }
+      .series-num {
+        font-size: 12px;
+        white-space: nowrap;
+        color: var(--sub);
+      }
+      .series-cells {
+        display: flex;
+        gap: 3px;
+        margin: 13px 0 9px;
+      }
+      .series-cells i {
+        height: 9px;
+        border-radius: 2px;
+        flex: 1;
+        background: #292d35;
+        min-width: 2px;
+      }
+      .series-cells i.done {
+        background: #b4b4b4;
+      }
+      .series-cells i.current {
+        background: #dfd2c2;
+      }
+      .series-bottom {
+        color: var(--muted);
+        font-size: 11px;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+      .rank-list {
+        display: flex;
+        flex-direction: column;
+      }
+      .rank-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 4px;
+        border-bottom: 1px solid #262b33;
+        cursor: pointer;
+      }
+      .rank-row:last-child {
+        border-bottom: none;
+      }
+      .rank-row:hover {
+        background: #1b2028;
+      }
+      .rank-index {
+        font-size: 11px;
+        color: var(--muted);
+        width: 22px;
+        display: inline-block;
+      }
+      .rank-name {
+        color: var(--text);
+        font-size: 13px;
+      }
+      .rank-time {
+        color: var(--sub);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      .filter-strip {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 15px;
+      }
+      .filter-tag {
+        border-radius: 6px;
+        color: var(--accent);
+        background: var(--accentSoft);
+        border: 1px solid #726c63;
+        font-size: 12px;
+        padding: 7px 10px;
+      }
+      .subtle-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .select {
+        background: var(--panel);
+        color: var(--sub);
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        padding: 7px 26px 7px 10px;
+        font-size: 12px;
+      }
+      .check-label {
+        display: inline-flex;
+        gap: 7px;
+        align-items: center;
+        color: var(--sub);
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .check-label input {
+        accent-color: #d9d1c6;
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      .activity-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 740px;
+      }
+      .activity-table thead th {
+        font-size: 11px;
+        color: var(--muted);
+        text-align: left;
+        font-weight: 500;
+        background: #0c0f13;
+        border-bottom: 1px solid var(--line);
+        padding: 13px 19px;
+        white-space: nowrap;
+      }
+      .activity-table td {
+        padding: 15px 19px;
+        border-bottom: 1px solid #262b32;
+        font-size: 12px;
+        vertical-align: top;
+      }
+      .activity-table tr:last-child td {
+        border-bottom: 0;
+      }
+      .activity-table tr:hover td {
+        background: #161a21;
+      }
+      .activity-table .primary {
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .activity-table .secondary {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 6px;
+        line-height: 1.5;
+      }
+      .activity-table .num {
+        font-size: 14px;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+        font-weight: 550;
+        white-space: nowrap;
+      }
+      .activity-table .row-tag {
+        display: inline-block;
+        border: 1px solid var(--line2);
+        padding: 3px 7px;
+        border-radius: 4px;
+        color: var(--sub);
+      }
+      .activity-table details {
+        margin-top: 10px;
+      }
+      .activity-table summary {
+        font-size: 11px;
+        color: var(--accent);
+        cursor: pointer;
+        list-style-position: inside;
+      }
+      .activity-table .detail {
+        margin-top: 11px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.9;
+        background: #0d1014;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        min-width: 300px;
+      }
+      .activity-table .detail strong {
+        font-weight: 500;
+        color: var(--sub);
+      }
+      .foot-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 14px 19px;
+        border-top: 1px solid var(--line);
+      }
+      .show-more {
+        background: none;
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        color: var(--sub);
+        padding: 8px 13px;
+        font-size: 12px;
+      }
+      .show-more:hover {
+        color: var(--text);
+      }
+      .footer {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        margin-top: 47px;
+        padding-top: 20px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        line-height: 1.7;
+      }
+      .muted-box {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 19px 0;
+      }
+      .note-divider {
+        border-top: 1px solid var(--line);
+        margin: 20px 0;
+      }
+      .pill {
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--line2);
+        font-size: 11px;
+        color: var(--sub);
+      }
+      .screen-only {
+      }
+      .print-only {
+        display: none;
+      }
+      @media (max-width: 1000px) {
+        .kpis {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .two-col {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 26px 22px 60px;
+        }
+      }
+      @media (max-width: 600px) {
+        main {
+          padding: 21px 14px 45px;
+        }
+        .name {
+          font-size: 22px;
+        }
+        .kpis {
+          gap: 8px;
+        }
+        .kpi {
+          padding: 18px 14px;
+          min-height: 139px;
+        }
+        .kpi-value {
+          font-size: 32px;
+        }
+        .kpi-value span {
+          font-size: 12px;
+        }
+        .panel-inner {
+          padding: 19px 15px;
+        }
+        .section {
+          margin-top: 31px;
+        }
+        .weekday-grid {
+          gap: 4px;
+        }
+        .weekday-cell {
+          padding: 9px 5px;
+        }
+        .weekday-cell b {
+          font-size: 11px;
+        }
+        .weekday-cell span {
+          font-size: 10px;
+        }
+        .calendar-body {
+          min-width: 730px;
+        }
+        .top-actions {
+          width: 100%;
+        }
+        .seg {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .seg button {
+          padding: 8px 7px;
+        }
+        h2 {
+          font-size: 18px;
+        }
+      }
+      @media (max-width: 700px) {
+        .table-wrap {
+          overflow: visible;
+        }
+        .activity-table {
+          min-width: 0;
+          width: 100%;
+        }
+        .activity-table thead {
+          display: none;
+        }
+        .activity-table tbody {
+          display: block;
+        }
+        .activity-table tr {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 3px;
+          padding: 12px 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .activity-table tr:last-child {
+          border-bottom: 0;
+        }
+        .activity-table td {
+          display: block;
+          padding: 5px 16px;
+          border-bottom: 0 !important;
+          min-width: 0;
+        }
+        .activity-table td:nth-child(1),
+        .activity-table td:nth-child(2),
+        .activity-table td:nth-child(5) {
+          grid-column: 1/3;
+        }
+        .activity-table td:nth-child(3) {
+          grid-column: 1;
+        }
+        .activity-table td:nth-child(4) {
+          grid-column: 2;
+        }
+        .activity-table .detail {
+          min-width: 0;
+        }
+      }
+      @media print {
+        body,
+        main {
+          background: #fff;
+          color: #333;
+        }
+        body:before {
+          display: none;
+        }
+        .screen-only,
+        .filter-strip,
+        .top-actions {
+          display: none !important;
+        }
+        .panel {
+          background: #fff;
+          border-color: #ccc;
+          break-inside: avoid;
+        }
+        .section {
+          break-inside: avoid;
+        }
+        .kpi-value,
+        .name,
+        h2,
+        h3,
+        .bar-meta strong,
+        .series-name,
+        .rank-name,
+        .activity-table .primary {
+          color: #111;
+        }
+        .hint,
+        .subtitle,
+        .muted-box,
+        .footer {
+          color: #444;
+        }
+        .bar-track {
+          background: #eee;
+        }
+        .bar-fill {
+          background: #777;
+        }
+        .calendar-scroll {
+          overflow: visible;
+          zoom: 0.9;
+        }
+      }
+      /* 数值切换：原版的递增计数，完成时轻微弹动 */
+      .kpi-value {
+        will-change: transform;
+      }
+      .kpi-value.metric-pulse {
+        animation: metricPulse 0.48s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes metricPulse {
+        0% {
+          transform: translateY(3px) scale(0.985);
+        }
+        58% {
+          transform: translateY(-2px) scale(1.028);
+        }
+        100% {
+          transform: translateY(0) scale(1);
+        }
+      }
+      .series-tools {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding-top: 12px;
+      }
+      .series-tabs {
+        display: flex;
+        gap: 3px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+      }
+      .series-tabs button {
+        background: none;
+        border: 0;
+        color: var(--muted);
+        padding: 5px 10px;
+        font-size: 11px;
+        border-radius: 4px;
+      }
+      .series-tabs button.active {
+        background: #30343b;
+        color: var(--text);
+      }
+      .paging {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .paging button {
+        font-size: 11px;
+        color: var(--sub);
+        background: #161a20;
+        border: 1px solid var(--line2);
+        border-radius: 5px;
+        padding: 7px 10px;
+      }
+      .paging button:hover:not(:disabled) {
+        background: #252b34;
+        color: var(--text);
+      }
+      .paging button:disabled {
+        opacity: 0.32;
+        cursor: default;
+      }
+      .paging .page-label {
+        font-size: 11px;
+        color: var(--muted);
+        min-width: 56px;
+        text-align: center;
+      }
+      .series-status {
+        display: inline-block;
+        margin-left: 8px;
+        font-size: 10px;
+        font-weight: 400;
+        color: var(--muted);
+        border: 1px solid #3a414c;
+        padding: 2px 5px;
+        border-radius: 4px;
+        vertical-align: 1px;
+      }
+      .record-search {
+        min-width: 145px;
+        max-width: 220px;
+        background: var(--panel);
+        border: 1px solid var(--line2);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      .record-search::placeholder {
+        color: var(--muted);
+      }
+      .distribution-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+        min-width: 0;
+      }
+      .distribution-stack > .panel {
+        min-width: 0;
+      }
+      .panel-seg {
+        width: auto;
+        flex-wrap: nowrap;
+      }
+      .panel-seg button {
+        padding: 6px 9px;
+      }
+      .genre-more {
+        display: block;
+        margin: 17px auto 0;
+      }
+      .genre-more[hidden] {
+        display: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .kpi-value.metric-pulse {
+          animation: none !important;
+        }
+      }
+      .import-dialog {
+        max-width: min(520px, 90vw);
+        border: 1px solid var(--line2);
+        border-radius: 10px;
+        background: var(--panel);
+        color: var(--sub);
+        padding: 24px;
+        box-shadow: 0 20px 60px #0009;
+      }
+      .import-dialog::backdrop {
+        background: #000a;
+      }
+      .import-dialog p {
+        font-size: 13px;
+        line-height: 1.8;
+      }
+      .import-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+        margin-top: 20px;
+      }
+      #activityStatus:empty {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="top">
+        <div class="identity">
+          <span class="mark" aria-hidden="true"></span>
+          <div>
+            <h1 class="name">观影统计</h1>
+            <div class="subtitle">Jellyfin · Playback Reporting · 个人观看记录</div>
+          </div>
+        </div>
+        <div class="top-actions screen-only">
+          <div class="seg" role="group" aria-label="选择时间范围" id="periodBtns">
+            <button data-period="year" class="active">本年度</button
+            ><button data-period="d90">近 90 天</button><button data-period="d30">近 30 天</button
+            ><button data-period="all">全部</button>
+          </div>
+          <button class="soft-btn" id="refreshBtn" type="button">重新同步</button
+          ><button class="soft-btn" id="exportBtn" type="button">导出数据</button
+          ><button class="soft-btn" id="importBtn" type="button">导入数据</button
+          ><button class="soft-btn" id="printBtn">打印页面</button>
+        </div>
+      </header>
+      <div class="notice" id="refreshStatus" role="status">正在读取本地统计数据……</div>
+      <div class="notice" id="activityStatus" role="status" aria-live="polite"></div>
+      <div class="notice screen-only" id="pathFallback" hidden>
+        <span id="pathFallbackText">Playback Reporting 数据库未能自动定位。</span>
+        <button class="soft-btn" id="pathDetectBtn" type="button">自动检测</button>
+        <button class="soft-btn" id="pathChooseBtn" type="button">浏览数据库</button>
+      </div>
+
+      <section class="section" style="margin-top: 26px">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="section-index">01</span>
+            <h2>观看概况</h2>
+          </div>
+          <span class="hint" id="rangeHint">统计时间：本年度</span>
+        </div>
+        <div class="kpis">
+          <div class="panel kpi">
+            <div class="kpi-label">累计观影时长</div>
+            <div class="kpi-value" id="totalHours">—</div>
+            <div class="kpi-foot" id="timeFoot">实际播放与历史补录分别统计</div>
+          </div>
+          <div class="panel kpi">
+            <div class="kpi-label">统计电影</div>
+            <div class="kpi-value" id="moviesCount">—</div>
+            <div class="kpi-foot">按电影媒体 ID 去重，不等于完播数量</div>
+          </div>
+          <div class="panel kpi">
+            <div class="kpi-label">统计剧集</div>
+            <div class="kpi-value" id="episodesCount">—</div>
+            <div class="kpi-foot">按具体单集媒体 ID 去重，不等于电视剧数量</div>
+          </div>
+          <div class="panel kpi">
+            <div class="kpi-label">观影天数</div>
+            <div class="kpi-value" id="activeDays">—</div>
+            <div class="kpi-foot" id="daysFoot">至少有一次播放记录的日期</div>
+          </div>
+        </div>
+        <div class="hint" id="sessionFoot" style="padding: 11px 2px 0">—</div>
+        <label class="check-label" style="margin-top: 9px"
+          ><input type="checkbox" id="includeBackfill" /> 全部时间计入历史补录估算</label
+        >
+        <div class="hint" id="backfillHint" role="status"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="section-index">02</span>
+            <h2>观看日历</h2>
+          </div>
+          <span class="hint">颜色越亮，当天播放时间越长 · 点击日期筛选记录</span>
+        </div>
+        <div class="panel panel-inner">
+          <div class="calendar-header">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <h3>观看日历</h3>
+              <select id="calendarYear" class="select screen-only" aria-label="日历年份"></select>
+            </div>
+            <div class="legend">
+              <span>少</span><i style="background: #1b1e24"></i><i style="background: #444955"></i
+              ><i style="background: #757b87"></i><i style="background: #a4a8ad"></i
+              ><i style="background: #e1d7c9"></i><span>多</span>
+            </div>
+          </div>
+          <div class="calendar-scroll">
+            <div class="calendar-body">
+              <div class="days-axis">
+                <span>一</span><span></span><span>三</span><span></span><span>五</span><span></span
+                ><span>日</span>
+              </div>
+              <div class="month-and-grid">
+                <div class="month-names" id="monthNames"></div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+              </div>
+            </div>
+          </div>
+          <div class="hint" id="calendarFoot" style="margin-top: 9px"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="section-index">03</span>
+            <h2>观看习惯</h2>
+          </div>
+          <span class="hint">按播放记录估算各时段的观看时间</span>
+        </div>
+        <div class="two-col">
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>观看时段</h3>
+                <p>一天 24 小时的播放时长分布</p>
+              </div>
+              <span class="pill" id="peakHour">—</span>
+            </div>
+            <div id="hourChart" class="chart" aria-label="24 小时分布"></div>
+            <div class="axis">
+              <span>0 时</span><span>4 时</span><span>8 时</span><span>12 时</span><span>16 时</span
+              ><span>20 时</span><span>23 时</span>
+            </div>
+          </div>
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>星期分布</h3>
+                <p>周一至周日的累计播放时长</p>
+              </div>
+              <span class="pill" id="weekendShare">—</span>
+            </div>
+            <div id="weekdayChart" class="weekday-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="section-index">04</span>
+            <h2>媒体库与剧集</h2>
+          </div>
+          <span class="hint">媒体库按来源分类，剧集进度按当前观看状态显示</span>
+        </div>
+        <div class="two-col">
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>媒体库时长</h3>
+                <p>按媒体库汇总播放时间</p>
+              </div>
+            </div>
+            <div id="libraryChart" class="bar-list"></div>
+            <div class="hint" style="margin-top: 18px">
+              不同媒体库的名称以实际 Jellyfin 配置为准。
+            </div>
+          </div>
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>剧集进度</h3>
+                <p>最近在看优先，随后是最近看完的剧 · 当前进度不随时间范围改变</p>
+              </div>
+            </div>
+            <div id="seriesList" class="series-list"></div>
+            <div class="series-tools screen-only">
+              <div class="series-tabs" id="seriesTabs" aria-label="剧集状态筛选">
+                <button data-series="all" class="active">全部</button
+                ><button data-series="watching">未看完</button
+                ><button data-series="done">已看完</button>
+              </div>
+              <div class="paging">
+                <span id="seriesPageInfo" class="page-label"></span
+                ><button id="seriesPrev" type="button">上一页</button
+                ><button id="seriesNext" type="button">下一页</button>
+              </div>
+            </div>
+            <p class="hint" id="seriesHint" style="margin: 10px 0 0">
+              只展示最近的几部；可用分页查看其他剧集。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="section-index">05</span>
+            <h2>作品分布</h2>
+          </div>
+          <span class="hint">按作品的上映年份、类型和导演分类</span>
+        </div>
+        <div class="two-col">
+          <div class="distribution-stack">
+            <div class="panel panel-inner">
+              <div class="panel-head">
+                <div>
+                  <h3>上映年代</h3>
+                  <p>按播放时长统计，点击年代筛选</p>
+                </div>
+              </div>
+              <div id="decadeChart" class="bar-list"></div>
+            </div>
+            <div class="panel panel-inner">
+              <div class="panel-head">
+                <div>
+                  <h3>导演排行</h3>
+                  <p>按相关作品的播放时长或作品数排序；作品数按电影或单集媒体 ID 去重</p>
+                </div>
+                <div
+                  class="seg panel-seg screen-only"
+                  id="directorMetric"
+                  role="group"
+                  aria-label="导演排行排序方式"
+                >
+                  <button
+                    type="button"
+                    data-director-metric="duration"
+                    class="active"
+                    aria-pressed="true"
+                  >
+                    按时长</button
+                  ><button type="button" data-director-metric="count" aria-pressed="false">
+                    按作品数
+                  </button>
+                </div>
+              </div>
+              <div id="directorChart" class="rank-list"></div>
+            </div>
+          </div>
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>体裁分布</h3>
+                <p>多标签统计，各类型占比可重叠</p>
+              </div>
+            </div>
+            <div id="genreChart" class="bar-list"></div>
+            <button
+              type="button"
+              id="genreToggle"
+              class="show-more genre-more screen-only"
+              aria-expanded="false"
+              hidden
+            >
+              展开全部
+            </button>
+          </div>
+        </div>
+        <div class="two-col" style="margin-top: 13px">
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>作品时长</h3>
+                <p>当前范围内实际播放时长排行</p>
+              </div>
+            </div>
+            <div id="workChart" class="bar-list"></div>
+          </div>
+          <div class="panel panel-inner">
+            <div class="panel-head">
+              <div>
+                <h3>设备时长</h3>
+                <p>按播放记录中的设备名称汇总</p>
+              </div>
+            </div>
+            <div id="deviceChart" class="bar-list"></div>
+            <div class="note-divider"></div>
+            <div class="hint" id="playedCount">—</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="section-index">06</span>
+            <h2>观影记录</h2>
+          </div>
+          <span class="hint">短暂退出后继续观看，可合并成同一次观影活动</span>
+        </div>
+        <div class="filter-strip screen-only">
+          <span class="subtle-label">合并间隔</span>
+          <select id="gapSelect" class="select" aria-label="允许中断时间">
+            <option value="5">5 分钟</option>
+            <option value="10">10 分钟</option>
+            <option value="15" selected>15 分钟</option>
+            <option value="20">20 分钟</option>
+            <option value="30">30 分钟</option>
+            <option value="60">60 分钟</option>
+          </select>
+          <label class="check-label"
+            ><input type="checkbox" id="excludeShort" /> 排除不足 2 分钟的播放</label
+          >
+          <select id="recordType" class="select" aria-label="按媒体类型筛选">
+            <option value="all">所有类型</option>
+            <option value="电影">电影</option>
+            <option value="剧集">剧集</option>
+          </select>
+          <input
+            id="recordSearch"
+            class="record-search"
+            type="search"
+            placeholder="搜索作品名称"
+            aria-label="搜索观影记录"
+          />
+          <span id="activeFilter" style="display: none"></span>
+        </div>
+        <div class="panel">
+          <div class="table-wrap">
+            <table class="activity-table">
+              <thead>
+                <tr>
+                  <th>开始时间</th>
+                  <th>作品</th>
+                  <th>媒体库</th>
+                  <th>播放时长</th>
+                  <th>记录</th>
+                </tr>
+              </thead>
+              <tbody id="activityRows"></tbody>
+            </table>
+          </div>
+          <div class="foot-controls">
+            <span id="activitySummary" class="hint">—</span>
+            <div class="paging screen-only">
+              <button id="activityPrev" type="button">上一页</button
+              ><span id="activityPageInfo" class="page-label">1 / 1 页</span
+              ><button id="activityNext" type="button">下一页</button>
+            </div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top: 12px">
+          合并间隔只决定怎样划分观影活动，不增加播放时长。短时播放默认保留，可自行排除；不根据累计时长推断是否完播。
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>播放记录来自 Playback Reporting；观看状态来自 Jellyfin。</span
+        ><span>跨时段分配与活动结束时间根据记录时长估算。</span>
+      </footer>
+    </main>
+    <dialog id="importDialog" class="import-dialog">
+      <h3>导入观影统计</h3>
+      <p id="importPreviewText"></p>
+      <div class="import-actions">
+        <button
+          class="soft-btn"
+          type="button"
+          onclick="document.getElementById('importDialog').close()"
+        >
+          取消</button
+        ><button class="soft-btn" id="importConfirm" type="button">导入并替换</button>
+      </div>
+    </dialog>
+    <script src="./director-map.js"></script>
+    <script src="./genre-map.js"></script>
+    <script src="./watch-statistics.js"></script>
+  </body>
+</html>

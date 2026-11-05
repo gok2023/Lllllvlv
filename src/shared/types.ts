@@ -10,7 +10,13 @@ export type PlayerKind =
   | "custom";
 export type Platform = "darwin" | "win32" | "linux";
 export type AppPage = "home" | "library" | "settings" | "setup";
-export type SettingsPage = "players" | "general" | "servers" | "diagnostics" | "about";
+export type SettingsPage =
+  | "players"
+  | "general"
+  | "servers"
+  | "statistics"
+  | "diagnostics"
+  | "about";
 export type AppDirectory = "program" | "data";
 export type AppDirectories = Record<AppDirectory, string>;
 export interface Server {
@@ -206,6 +212,45 @@ export type PlaybackControl =
   | { action: "seek"; seconds: number }
   | { action: "jump"; index: number };
 export interface DesktopAPI {
+  getWatchStatistics(
+    this: void,
+  ): Promise<import("./watch-statistics").WatchStatisticsSnapshot | null>;
+  refreshWatchStatistics(this: void): Promise<void>;
+  getWatchStatisticsStatus(
+    this: void,
+  ): Promise<{ playing: boolean; syncing: boolean; error?: string }>;
+  getWatchStatisticsPathStatus(
+    this: void,
+  ): Promise<{ local: boolean; path?: string; manual: boolean; needsManualPath: boolean }>;
+  chooseWatchStatisticsPath(
+    this: void,
+  ): Promise<{ local: boolean; path?: string; manual: boolean; needsManualPath: boolean } | null>;
+  autoDiscoverWatchStatisticsPath(
+    this: void,
+  ): Promise<{ local: boolean; path?: string; manual: boolean; needsManualPath: boolean }>;
+  clearWatchStatisticsPath(
+    this: void,
+  ): Promise<{ local: boolean; path?: string; manual: boolean; needsManualPath: boolean }>;
+  saveWatchStatisticsSettings(
+    this: void,
+    settings: import("./watch-statistics").WatchStatisticsSettings,
+  ): Promise<import("./watch-statistics").WatchStatisticsSnapshot | null>;
+  previewWatchStatisticsImport(
+    this: void,
+  ): Promise<import("./watch-statistics").WatchStatisticsImportPreview | null>;
+  importWatchStatistics(
+    this: void,
+    mode: "replace",
+  ): Promise<import("./watch-statistics").WatchStatisticsSnapshot>;
+  exportWatchStatistics(this: void): Promise<string | null>;
+  onWatchStatisticsUpdated(
+    this: void,
+    callback: (snapshot: import("./watch-statistics").WatchStatisticsSnapshot) => void,
+  ): () => void;
+  onWatchStatisticsStatus(
+    this: void,
+    callback: (status: { playing: boolean; syncing: boolean; error?: string }) => void,
+  ): () => void;
   getState(this: void): Promise<AppState>;
   saveServer(this: void, server: ServerInput): Promise<AppState>;
   getServerCredentials(this: void, id: string): Promise<ServerCredentials | null>;

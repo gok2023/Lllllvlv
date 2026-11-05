@@ -62,6 +62,7 @@ export const zh = {
   choosePlayer: "选择播放器",
   players: "播放器",
   general: "通用",
+  statistics: "统计",
   diagnostics: "诊断",
   about: "关于",
   showFreebo: "显示 Lllllvlv",
@@ -171,7 +172,8 @@ export const zh = {
     "每行一个参数，无需加引号。{url} 为视频地址，{title} 为标题，{start} 为续播秒数。必须包含 {url}。",
   playerUrlRequired: "启动参数必须包含 {url}，用于传入视频地址。",
   playerExecutableInvalid: "无法执行此文件，请选择有效的播放器应用或可执行文件。",
-  customPlayerGuide: "仅打开当前视频，在播放器内控制播放；不提供 Lllllvlv 连播、轨道选择或进度回传。",
+  customPlayerGuide:
+    "仅打开当前视频，在播放器内控制播放；不提供 Lllllvlv 连播、轨道选择或进度回传。",
   playerMpvIpc: "启用 mpv IPC",
   customPlayerMpvGuide:
     "适用于接受 mpv 命令行参数的播放器。Lllllvlv 自动配置 IPC、续播与轨道，支持播放控制、连播和进度回传。",

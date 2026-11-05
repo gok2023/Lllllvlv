@@ -5,6 +5,7 @@ export const settingsPaths = {
   servers: "/settings/servers",
   players: "/settings/players",
   general: "/settings/general",
+  statistics: "/settings/statistics",
   diagnostics: "/settings/diagnostics",
   about: "/settings/about",
 } as const satisfies Record<SettingsPage, string>;

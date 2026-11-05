@@ -5,13 +5,14 @@ import {
   Globe2,
   Info,
   Settings2,
+  ChartNoAxesCombined,
   MonitorPlay,
   Plus,
   RefreshCw,
   FolderOpen,
   Volume2,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
@@ -34,6 +35,7 @@ const settingPages = [
   { id: "servers", icon: Globe2 },
   { id: "players", icon: MonitorPlay },
   { id: "general", icon: Settings2 },
+  { id: "statistics", icon: ChartNoAxesCombined },
   { id: "diagnostics", icon: Bug },
   { id: "about", icon: Info },
 ] as const;
@@ -51,7 +53,12 @@ export function SettingsLayout() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
   return (
-    <div className="grid min-h-full grid-cols-[216px_minmax(0,1fr)] max-[1000px]:grid-cols-[190px_minmax(0,1fr)] max-[650px]:grid-cols-[150px_minmax(0,1fr)]">
+    <div
+      className={cn(
+        "grid grid-cols-[216px_minmax(0,1fr)] max-[1000px]:grid-cols-[190px_minmax(0,1fr)] max-[650px]:grid-cols-[150px_minmax(0,1fr)]",
+        pathname === settingsPaths.statistics ? "h-full min-h-0" : "min-h-full",
+      )}
+    >
       <aside className="sticky top-0 flex h-[calc(100vh-88px)] flex-col px-3 py-6 max-[650px]:px-2 max-[650px]:py-5 [&>h1]:mx-4 [&>h1]:mb-6 [&>h1]:text-xl [&>nav]:flex [&>nav]:flex-col [&>nav]:gap-[3px]">
         <h1>{t("settings")}</h1>
         <nav className="-ml-3 max-[650px]:-ml-2" aria-label={t("settings")}>
@@ -79,8 +86,20 @@ export function SettingsLayout() {
           <br />v{state.version}
         </span>
       </aside>
-      <div className="mx-auto w-full max-w-[880px] px-10 pt-7 pb-10 max-[1000px]:p-7 max-[650px]:p-5">
-        <section className="mb-6 scroll-mt-[30px]">
+      <div
+        className={cn(
+          "mx-auto w-full",
+          pathname === settingsPaths.statistics
+            ? "flex min-h-0 min-w-0 flex-col py-4 pr-5 pb-4 pl-2 max-[1000px]:p-3"
+            : "max-w-[880px] px-10 pt-7 pb-10 max-[1000px]:p-7 max-[650px]:p-5",
+        )}
+      >
+        <section
+          className={cn(
+            "mb-6 min-w-0 scroll-mt-[30px]",
+            pathname === settingsPaths.statistics && "flex min-h-0 flex-1 flex-col mb-0",
+          )}
+        >
           <Outlet />
         </section>
       </div>
@@ -245,7 +264,10 @@ export function GeneralPage() {
   const { state, update, isPending, run } = useApp();
   const { t } = useAppTranslation();
   const [videoVolume, setVideoVolume] = useState(state.settings.startupVideoVolume);
-  useEffect(() => setVideoVolume(state.settings.startupVideoVolume), [state.settings.startupVideoVolume]);
+  useEffect(
+    () => setVideoVolume(state.settings.startupVideoVolume),
+    [state.settings.startupVideoVolume],
+  );
   return (
     <>
       <Heading title={t("general")} />
@@ -274,26 +296,74 @@ export function GeneralPage() {
         />
       </SettingRow>
       <SettingRow title={t("startupVideo")}>
-        <div className="flex flex-wrap items-center justify-end gap-2 rounded-md border border-dashed p-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
-          event.preventDefault();
-          const file = event.dataTransfer.files[0];
-          if (file) void run("settings", (api) => api.setStartupVideo(api.startupVideoPath(file)));
-        }}>
-          <Switch aria-label={t("startupVideo")} checked={state.settings.startupVideoEnabled} disabled={isPending("settings")} onCheckedChange={(checked) => update({ startupVideoEnabled: checked })} />
-          <Button variant="outline" disabled={isPending("settings")} onClick={() => void run("settings", (api) => api.chooseStartupVideo())}>
-            <FolderOpen className="size-4" />{t(state.settings.startupVideoName ? "startupVideoReplace" : "startupVideoChoose")}
+        <div
+          className="flex flex-wrap items-center justify-end gap-2 rounded-md border border-dashed p-2"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            const file = event.dataTransfer.files[0];
+            if (file)
+              void run("settings", (api) => api.setStartupVideo(api.startupVideoPath(file)));
+          }}
+        >
+          <Switch
+            aria-label={t("startupVideo")}
+            checked={state.settings.startupVideoEnabled}
+            disabled={isPending("settings")}
+            onCheckedChange={(checked) => update({ startupVideoEnabled: checked })}
+          />
+          <Button
+            variant="outline"
+            disabled={isPending("settings")}
+            onClick={() => void run("settings", (api) => api.chooseStartupVideo())}
+          >
+            <FolderOpen className="size-4" />
+            {t(state.settings.startupVideoName ? "startupVideoReplace" : "startupVideoChoose")}
           </Button>
-          {state.settings.startupVideoName && <><span className="max-w-52 truncate text-sm" title={state.settings.startupVideoName}>{state.settings.startupVideoName}</span><Button variant="ghost" disabled={isPending("settings")} onClick={() => void run("settings", (api) => api.clearStartupVideo())}>{t("startupVideoClear")}</Button></>}
-          <span className="w-full text-right text-xs text-muted-foreground">{t("startupVideoDrop")}</span>
+          {state.settings.startupVideoName && (
+            <>
+              <span className="max-w-52 truncate text-sm" title={state.settings.startupVideoName}>
+                {state.settings.startupVideoName}
+              </span>
+              <Button
+                variant="ghost"
+                disabled={isPending("settings")}
+                onClick={() => void run("settings", (api) => api.clearStartupVideo())}
+              >
+                {t("startupVideoClear")}
+              </Button>
+            </>
+          )}
+          <span className="w-full text-right text-xs text-muted-foreground">
+            {t("startupVideoDrop")}
+          </span>
         </div>
       </SettingRow>
       <SettingRow title={t("startupVideoSound")}>
-        <Switch aria-label={t("startupVideoSound")} checked={state.settings.startupVideoSoundEnabled} disabled={!state.settings.startupVideoEnabled || isPending("settings")} onCheckedChange={(checked) => update({ startupVideoSoundEnabled: checked })} />
+        <Switch
+          aria-label={t("startupVideoSound")}
+          checked={state.settings.startupVideoSoundEnabled}
+          disabled={!state.settings.startupVideoEnabled || isPending("settings")}
+          onCheckedChange={(checked) => update({ startupVideoSoundEnabled: checked })}
+        />
       </SettingRow>
       <SettingRow title={t("startupVideoVolume")}>
         <div className="flex w-56 items-center gap-3">
           <Volume2 className="size-4 shrink-0 text-muted-foreground" />
-          <Slider aria-label={t("startupVideoVolume")} value={[videoVolume]} min={0} max={100} step={5} disabled={!state.settings.startupVideoEnabled || !state.settings.startupVideoSoundEnabled || isPending("settings")} onValueChange={([value]) => setVideoVolume(value)} onValueCommit={([value]) => update({ startupVideoVolume: value })} />
+          <Slider
+            aria-label={t("startupVideoVolume")}
+            value={[videoVolume]}
+            min={0}
+            max={100}
+            step={5}
+            disabled={
+              !state.settings.startupVideoEnabled ||
+              !state.settings.startupVideoSoundEnabled ||
+              isPending("settings")
+            }
+            onValueChange={([value]) => setVideoVolume(value)}
+            onValueCommit={([value]) => update({ startupVideoVolume: value })}
+          />
           <span className="w-10 text-right text-sm tabular-nums">{videoVolume}%</span>
         </div>
       </SettingRow>
@@ -314,6 +384,107 @@ export function GeneralPage() {
         />
       </SettingRow>
     </>
+  );
+}
+export function StatisticsPage() {
+  return null;
+}
+export function StatisticsFrame({ visible }: { visible: boolean }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const { runtime, state } = useApp();
+  const serverId = state.settings.activeServerId;
+  useEffect(() => {
+    const unsubscribe = runtime.api.onWatchStatisticsUpdated((snapshot) => {
+      if (snapshot.serverId !== serverId) return;
+      frame.current?.contentWindow?.postMessage(
+        { channel: "watch-statistics", event: "updated", snapshot },
+        "*",
+      );
+    });
+    const unsubscribeStatus = runtime.api.onWatchStatisticsStatus((status) => {
+      frame.current?.contentWindow?.postMessage(
+        { channel: "watch-statistics", event: "status", status },
+        "*",
+      );
+    });
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow) return;
+      const message = event.data;
+      if (!message || message.channel !== "watch-statistics" || typeof message.id !== "number")
+        return;
+      const reply = (response: { result?: unknown; error?: string }) =>
+        frame.current?.contentWindow?.postMessage(
+          { channel: "watch-statistics", id: message.id, ...response },
+          "*",
+        );
+      let operation: Promise<unknown>;
+      switch (message.method) {
+        case "getWatchStatistics":
+          operation = runtime.api.getWatchStatistics();
+          break;
+        case "refreshWatchStatistics":
+          operation = runtime.api.refreshWatchStatistics();
+          break;
+        case "getWatchStatisticsStatus":
+          operation = runtime.api.getWatchStatisticsStatus();
+          break;
+        case "getWatchStatisticsPathStatus":
+          operation = runtime.api.getWatchStatisticsPathStatus();
+          break;
+        case "autoDiscoverWatchStatisticsPath":
+          operation = runtime.api.autoDiscoverWatchStatisticsPath();
+          break;
+        case "chooseWatchStatisticsPath":
+          operation = runtime.api.chooseWatchStatisticsPath();
+          break;
+        case "saveWatchStatisticsSettings":
+          operation = runtime.api.saveWatchStatisticsSettings(message.args?.[0]);
+          break;
+        case "exportWatchStatistics":
+          operation = runtime.api.exportWatchStatistics();
+          break;
+        case "previewWatchStatisticsImport":
+          operation = runtime.api.previewWatchStatisticsImport();
+          break;
+        case "importWatchStatistics":
+          operation = runtime.api.importWatchStatistics("replace");
+          break;
+        default:
+          return;
+      }
+      void operation.then(
+        (result) => reply({ result }),
+        (error) => reply({ error: String(error) }),
+      );
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      unsubscribe();
+      unsubscribeStatus();
+    };
+  }, [runtime, serverId]);
+  useEffect(() => {
+    if (visible)
+      frame.current?.contentWindow?.postMessage(
+        { channel: "watch-statistics", event: "recheck" },
+        "*",
+      );
+  }, [visible]);
+  return (
+    <div
+      className={cn(
+        "absolute inset-y-0 right-0 z-10 flex w-[calc(100%-216px)] min-h-0 min-w-0 flex-col bg-background py-4 pr-5 pl-2 max-[1000px]:w-[calc(100%-190px)] max-[1000px]:p-3 max-[650px]:w-[calc(100%-150px)]",
+        !visible && "hidden",
+      )}
+    >
+      <iframe
+        ref={frame}
+        title="观影统计"
+        src="./watch-statistics.html"
+        className="min-h-0 w-full flex-1 rounded-lg border border-border bg-[#090b0e]"
+      />
+    </div>
   );
 }
 export function DiagnosticsPage() {

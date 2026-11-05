@@ -64,6 +64,7 @@ export const en = {
   choosePlayer: "Choose a player",
   players: "Players",
   general: "General",
+  statistics: "Statistics",
   diagnostics: "Diagnostics",
   about: "About",
   showFreebo: "Show Lllllvlv",

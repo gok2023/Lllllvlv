@@ -22,6 +22,7 @@ const ServerEditorPage = lazyRouteComponent(settingsModule, "ServerEditorPage");
 const PlayersPage = lazyRouteComponent(settingsModule, "PlayersPage");
 const PlayerEditorPage = lazyRouteComponent(settingsModule, "PlayerEditorPage");
 const GeneralPage = lazyRouteComponent(settingsModule, "GeneralPage");
+const StatisticsPage = lazyRouteComponent(settingsModule, "StatisticsPage");
 const DiagnosticsPage = lazyRouteComponent(settingsModule, "DiagnosticsPage");
 const AboutPage = lazyRouteComponent(settingsModule, "AboutPage");
 const LibraryPage = lazyRouteComponent(settingsModule, "LibraryPage");
@@ -202,6 +203,12 @@ const diagnostics = createRoute({
   component: DiagnosticsPage,
   beforeLoad: ({ context }) => preparePage(context, "settings", "diagnostics"),
 });
+const statistics = createRoute({
+  getParentRoute: () => settings,
+  path: "statistics",
+  component: StatisticsPage,
+  beforeLoad: ({ context }) => preparePage(context, "settings", "statistics"),
+});
 const about = createRoute({
   getParentRoute: () => settings,
   path: "about",
@@ -232,6 +239,7 @@ const routeTree = root.addChildren([
       addPlayer,
       editPlayer,
       general,
+      statistics,
       diagnostics,
       about,
     ]),

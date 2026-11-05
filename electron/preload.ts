@@ -2,6 +2,34 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopAPI, AppState } from "../src/shared/types";
 
 const api: DesktopAPI = {
+  getWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics"),
+  refreshWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics-refresh"),
+  getWatchStatisticsStatus: () => ipcRenderer.invoke("app:watch-statistics-status"),
+  getWatchStatisticsPathStatus: () => ipcRenderer.invoke("app:watch-statistics-path-status"),
+  chooseWatchStatisticsPath: () => ipcRenderer.invoke("app:watch-statistics-path-choose"),
+  autoDiscoverWatchStatisticsPath: () => ipcRenderer.invoke("app:watch-statistics-path-discover"),
+  clearWatchStatisticsPath: () => ipcRenderer.invoke("app:watch-statistics-path-clear"),
+  saveWatchStatisticsSettings: (settings) =>
+    ipcRenderer.invoke("app:watch-statistics-settings", settings),
+  previewWatchStatisticsImport: () => ipcRenderer.invoke("app:watch-statistics-import-preview"),
+  importWatchStatistics: (mode) => ipcRenderer.invoke("app:watch-statistics-import", mode),
+  exportWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics-export"),
+  onWatchStatisticsUpdated: (callback) => {
+    const listener = (
+      _event: unknown,
+      snapshot: import("../src/shared/watch-statistics").WatchStatisticsSnapshot,
+    ) => callback(snapshot);
+    ipcRenderer.on("app:watch-statistics-updated", listener);
+    return () => ipcRenderer.removeListener("app:watch-statistics-updated", listener);
+  },
+  onWatchStatisticsStatus: (callback) => {
+    const listener = (
+      _event: unknown,
+      status: { playing: boolean; syncing: boolean; error?: string },
+    ) => callback(status);
+    ipcRenderer.on("app:watch-statistics-status", listener);
+    return () => ipcRenderer.removeListener("app:watch-statistics-status", listener);
+  },
   getState: () => ipcRenderer.invoke("app:state"),
   saveServer: (server) => ipcRenderer.invoke("app:save-server", server),
   getServerCredentials: (id) => ipcRenderer.invoke("app:server-credentials", id),
