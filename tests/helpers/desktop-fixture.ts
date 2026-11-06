@@ -52,6 +52,12 @@ export function createDesktopFixture() {
     correctWatchLibrary: vi.fn(async () => {
       throw new Error("No statistics fixture");
     }),
+    reviewWatchStatistics: vi.fn(async () => {
+      throw new Error("No statistics fixture");
+    }),
+    previewWatchStatisticsReview: vi.fn(async () => {
+      throw new Error("No statistics fixture");
+    }),
     refreshWatchStatistics: vi.fn(async () => {
       throw new Error("No Jellyfin session");
     }),

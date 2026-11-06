@@ -505,42 +505,53 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
           "*",
         );
       let operation: Promise<unknown>;
-      switch (message.method) {
-        case "getWatchStatistics":
-          operation = runtime.api.getWatchStatistics();
-          break;
-        case "correctWatchLibrary":
-          operation = runtime.api.correctWatchLibrary(message.args?.[0]);
-          break;
-        case "refreshWatchStatistics":
-          operation = runtime.api.refreshWatchStatistics();
-          break;
-        case "getWatchStatisticsStatus":
-          operation = runtime.api.getWatchStatisticsStatus();
-          break;
-        case "getWatchStatisticsPathStatus":
-          operation = runtime.api.getWatchStatisticsPathStatus();
-          break;
-        case "autoDiscoverWatchStatisticsPath":
-          operation = runtime.api.autoDiscoverWatchStatisticsPath();
-          break;
-        case "chooseWatchStatisticsPath":
-          operation = runtime.api.chooseWatchStatisticsPath();
-          break;
-        case "saveWatchStatisticsSettings":
-          operation = runtime.api.saveWatchStatisticsSettings(message.args?.[0]);
-          break;
-        case "exportWatchStatistics":
-          operation = runtime.api.exportWatchStatistics();
-          break;
-        case "previewWatchStatisticsImport":
-          operation = runtime.api.previewWatchStatisticsImport();
-          break;
-        case "importWatchStatistics":
-          operation = runtime.api.importWatchStatistics("replace");
-          break;
-        default:
-          return;
+      try {
+        switch (message.method) {
+          case "getWatchStatistics":
+            operation = runtime.api.getWatchStatistics();
+            break;
+          case "correctWatchLibrary":
+            operation = runtime.api.correctWatchLibrary(message.args?.[0]);
+            break;
+          case "reviewWatchStatistics":
+            operation = runtime.api.reviewWatchStatistics(message.args?.[0]);
+            break;
+          case "previewWatchStatisticsReview":
+            operation = runtime.api.previewWatchStatisticsReview(message.args?.[0]);
+            break;
+          case "refreshWatchStatistics":
+            operation = runtime.api.refreshWatchStatistics();
+            break;
+          case "getWatchStatisticsStatus":
+            operation = runtime.api.getWatchStatisticsStatus();
+            break;
+          case "getWatchStatisticsPathStatus":
+            operation = runtime.api.getWatchStatisticsPathStatus();
+            break;
+          case "autoDiscoverWatchStatisticsPath":
+            operation = runtime.api.autoDiscoverWatchStatisticsPath();
+            break;
+          case "chooseWatchStatisticsPath":
+            operation = runtime.api.chooseWatchStatisticsPath();
+            break;
+          case "saveWatchStatisticsSettings":
+            operation = runtime.api.saveWatchStatisticsSettings(message.args?.[0]);
+            break;
+          case "exportWatchStatistics":
+            operation = runtime.api.exportWatchStatistics();
+            break;
+          case "previewWatchStatisticsImport":
+            operation = runtime.api.previewWatchStatisticsImport();
+            break;
+          case "importWatchStatistics":
+            operation = runtime.api.importWatchStatistics("replace");
+            break;
+          default:
+            return;
+        }
+      } catch (error) {
+        reply({ error: String(error) });
+        return;
       }
       void operation.then(
         (result) => reply({ result }),

@@ -221,6 +221,14 @@ export interface DesktopAPI {
     this: void,
     input: { recordId: string; libraryId: string | null; remember: boolean },
   ): Promise<import("./watch-statistics").WatchStatisticsSnapshot>;
+  reviewWatchStatistics(
+    this: void,
+    input: import("./watch-statistics").WatchReviewAction,
+  ): Promise<import("./watch-statistics").WatchStatisticsSnapshot | null>;
+  previewWatchStatisticsReview(
+    this: void,
+    input: import("./watch-statistics").WatchBatchReviewInput,
+  ): Promise<import("./watch-statistics").WatchBatchReviewPreview>;
   refreshWatchStatistics(this: void): Promise<void>;
   getWatchStatisticsStatus(
     this: void,

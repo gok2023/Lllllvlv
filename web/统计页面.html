@@ -203,6 +203,221 @@
       .panel-inner {
         padding: 23px 25px;
       }
+      .kpi:has(.kpi-value[role="button"]) {
+        cursor: pointer;
+        transition:
+          border-color 240ms ease,
+          background-color 240ms ease,
+          transform 240ms ease;
+      }
+      .kpi:has(.kpi-value[role="button"]):hover,
+      .kpi:has(.kpi-value[aria-expanded="true"]) {
+        border-color: var(--accent);
+        background: var(--panel2);
+      }
+      .kpi:has(.kpi-value[role="button"]):hover {
+        transform: translateY(-2px);
+      }
+      .kpi:has(.kpi-value[role="button"]) .kpi-foot::after {
+        content: "  ›";
+        display: inline-block;
+        font-size: 18px;
+        transition: transform 240ms ease;
+      }
+      .kpi:has(.kpi-value[aria-expanded="true"]) .kpi-foot::after {
+        transform: rotate(90deg);
+      }
+      .kpi-value[role="button"] {
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      .kpi-value[role="button"]:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+      }
+      .breakdown-shell {
+        display: grid;
+        grid-template-rows: 0fr;
+        opacity: 0;
+        transition:
+          grid-template-rows 250ms ease,
+          opacity 250ms ease;
+      }
+      .breakdown-shell.open {
+        grid-template-rows: 1fr;
+        opacity: 1;
+        margin-top: 12px;
+      }
+      .breakdown-content {
+        min-height: 0;
+        overflow: hidden;
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+      .breakdown-shell:not(.open) .breakdown-content {
+        border-color: transparent;
+      }
+      .breakdown-shell.open .breakdown-content {
+        padding-top: 23px;
+        padding-bottom: 23px;
+      }
+      .review-tools,
+      .review-paging {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 12px 0;
+      }
+      .review-tools input[type="search"] {
+        min-width: 180px;
+      }
+      .review-entry {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .review-entry > label,
+      .review-entry > span {
+        flex: 1 1 260px;
+      }
+      .review-entry button,
+      .review-tools button,
+      .review-paging button {
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
+      }
+      .review-entry button:disabled,
+      .review-tools button:disabled,
+      .review-paging button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .watch-row,
+      .watch-season {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid var(--line);
+        min-width: 0;
+      }
+      .watch-row-button {
+        flex: 1;
+        width: 100%;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 10px;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+        border-radius: 7px;
+      }
+      .watch-row-button strong {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+      .watch-row-button span:not(.watch-arrow) {
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .watch-row-button:hover,
+      .watch-row-button:focus-visible {
+        background: var(--panel2);
+        outline-color: var(--accent);
+      }
+      .watch-arrow {
+        font-size: 22px;
+        line-height: 1;
+        color: var(--muted);
+      }
+      .watch-back {
+        border: 0;
+        background: transparent;
+        color: var(--accent);
+        cursor: pointer;
+        padding: 8px 0;
+      }
+      .watch-editor {
+        margin-top: 14px;
+        padding: 16px;
+        background: var(--panel2);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+      .watch-editor input[type="number"] {
+        width: 80px;
+      }
+      .watch-editor button,
+      .watch-history-row button {
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
+      }
+      .watch-history {
+        max-height: 240px;
+        overflow: auto;
+      }
+      .watch-history-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .watch-history-row span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      #candidateList .review-entry {
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      #candidateList .review-entry:hover {
+        background: var(--panel2);
+      }
+      #candidateList .review-entry label {
+        line-height: 1.5;
+      }
+      #candidateList .review-entry button {
+        white-space: nowrap;
+      }
+      .breakdown-content,
+      .review-panel {
+        overflow: visible;
+      }
+      .breakdown-shell:not(.open) .breakdown-content {
+        overflow: hidden;
+      }
+      @media (max-width: 600px) {
+        .watch-row-button {
+          flex-wrap: wrap;
+        }
+        .watch-row-button strong {
+          flex-basis: 100%;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .breakdown-shell {
+          transition: none;
+        }
+      }
       .panel-head {
         display: flex;
         justify-content: space-between;
@@ -518,16 +733,16 @@
         color: var(--sub);
       }
       .series-cells {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(var(--series-columns), minmax(0, 1fr));
         gap: 3px;
         margin: 13px 0 9px;
       }
       .series-cells i {
         height: 9px;
         border-radius: 2px;
-        flex: 1;
         background: #292d35;
-        min-width: 2px;
+        min-width: 0;
       }
       .series-cells i.done {
         background: #b4b4b4;
@@ -1223,14 +1438,14 @@
             <div class="kpi-foot" id="timeFoot">实际播放与历史补录分别统计</div>
           </div>
           <div class="panel kpi">
-            <div class="kpi-label">统计电影</div>
+            <div class="kpi-label">累计观看电影</div>
             <div class="kpi-value" id="moviesCount">—</div>
-            <div class="kpi-foot">按电影媒体 ID 去重，不等于完播数量</div>
+            <div class="kpi-foot">已确认部次 · 点击查看不同电影与刷次</div>
           </div>
           <div class="panel kpi">
-            <div class="kpi-label">统计剧集</div>
+            <div class="kpi-label">累计观看剧集</div>
             <div class="kpi-value" id="episodesCount">—</div>
-            <div class="kpi-foot">按具体单集媒体 ID 去重，不等于电视剧数量</div>
+            <div class="kpi-foot">已确认集次 · 点击查看不同单集与刷次</div>
           </div>
           <div class="panel kpi">
             <div class="kpi-label">观影天数</div>
@@ -1238,10 +1453,61 @@
             <div class="kpi-foot" id="daysFoot">至少有一次播放记录的日期</div>
           </div>
         </div>
-        <div class="hint" id="sessionFoot" style="padding: 11px 2px 0">—</div>
-        <label class="check-label" style="margin-top: 9px"
-          ><input type="checkbox" id="includeBackfill" /> 全部时间计入历史补录估算</label
+        <div class="breakdown-shell" id="breakdownShell">
+          <div class="panel panel-inner breakdown-content" id="breakdownContent">
+            <div id="movieBreakdown" hidden>
+              <h3>电影观看部次详情</h3>
+              <div id="movieBreakdownBody"></div>
+            </div>
+            <div id="episodeBreakdown" hidden>
+              <h3>剧集观看集次详情</h3>
+              <div id="episodeBreakdownBody"></div>
+            </div>
+          </div>
+        </div>
+        <details
+          class="panel panel-inner review-panel"
+          id="candidatePanel"
+          style="margin-top: 12px"
         >
+          <summary>待确认观看 <span id="candidateCount">0</span></summary>
+          <div class="review-tools">
+            <select id="candidateType" class="select" aria-label="候选类型">
+              <option value="all">全部类型</option>
+              <option value="Movie">电影</option>
+              <option value="Episode">剧集</option></select
+            ><select id="candidateVisit" class="select" aria-label="候选刷次">
+              <option value="all">首次与重温</option>
+              <option value="first">首次</option>
+              <option value="rewatch">重温</option></select
+            ><input
+              id="candidateSearch"
+              class="record-search"
+              type="search"
+              placeholder="搜索标题"
+              aria-label="搜索待确认标题"
+            />
+          </div>
+          <div class="review-tools">
+            <label><input type="checkbox" id="candidateSelectPage" /> 全选本页</label
+            ><button id="candidateBatch" type="button">确认选中项</button
+            ><span id="candidateSelection" class="hint"></span>
+          </div>
+          <div id="candidateList"></div>
+          <div class="review-paging">
+            <button id="candidatePrev" type="button">上一页</button
+            ><span id="candidatePageInfo"></span
+            ><button id="candidateNext" type="button">下一页</button>
+          </div>
+        </details>
+        <div class="hint" id="sessionFoot" style="padding: 11px 2px 0">—</div>
+        <label class="check-label"
+          >重温候选门槛（分钟）
+          <input id="rewatchMinutes" type="number" min="1" max="240" value="10"
+        /></label>
+        <div class="hint" style="margin-top: 9px">
+          全部时间包含不重复的历史估算；年度与近 30／90 天仅统计可靠日期。
+        </div>
         <div class="hint" id="backfillHint" role="status"></div>
       </section>
 

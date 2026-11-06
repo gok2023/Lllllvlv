@@ -985,7 +985,7 @@ function setupIPC() {
         }
         if (channel.startsWith("app:watch-statistics") && error instanceof Error)
           throw new Error(
-            channel.includes("import") || channel.includes("export")
+            channel.includes("import") || channel.includes("export") || channel.includes("review")
               ? error.message
               : [
                     "Jellyfin 请求失败",
@@ -1046,6 +1046,47 @@ function setupIPC() {
     if (chosen.canceled || !chosen.filePaths[0]) return null;
     await watchPathLocator.setManual(server.id, server.url, chosen.filePaths[0]);
     return watchPathLocator.status(server.id, server.url);
+  const batchReviewSchema = z.object({
+    action: z.literal("batch"),
+    itemIds: z.array(z.string().min(1)).min(1),
+    mode: z.enum(["set", "increase", "decrease", "estimate"]),
+    totalCount: z.number().int().min(0).max(100).optional(),
+    estimate: z.boolean().optional(),
+    estimated: z.boolean().optional(),
+  });
+  handle("app:watch-statistics-review-preview", async (input) => {
+    const parsed = batchReviewSchema.parse(input);
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
+    return watchStatistics.previewReview(server.id, userId, parsed);
+  });
+  handle("app:watch-statistics-review", async (input) => {
+    const parsed = z
+      .discriminatedUnion("action", [
+        z.object({
+          action: z.enum(["confirm", "ignore", "later", "confirmDirect"]),
+          itemIds: z.array(z.string()).min(1),
+        }),
+        z.object({
+          action: z.literal("manual"),
+          itemIds: z.array(z.string()).min(1),
+          totalCount: z.number().int().min(1).max(100),
+          estimate: z.boolean(),
+        }),
+        z.object({ action: z.literal("revoke"), confirmationId: z.string().min(1) }),
+        batchReviewSchema.extend({ token: z.string().min(1), operationId: z.string().uuid() }),
+      ])
+      .parse(input);
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
+    const snapshot = await watchStatistics.review(server.id, userId, parsed);
+    if (snapshot) await publishWatch(snapshot, userId);
+    return snapshot;
+  });
   });
   handle("app:watch-statistics-path-discover", async () => {
     const server = watchServer();
@@ -1066,6 +1107,7 @@ function setupIPC() {
         gapMinutes: z.number().min(0).max(240),
         includeBackfill: z.boolean(),
         excludeShort: z.boolean(),
+        rewatchMinutes: z.number().int().min(1).max(240).optional(),
       })
       .parse(input) as WatchStatisticsSettings;
     const server = watchServer();

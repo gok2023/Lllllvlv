@@ -67,6 +67,12 @@
   :root[data-visual-theme="elysium"] .series-cells i {
     background: rgba(238, 232, 218, 0.23);
   }
+  :root[data-visual-theme="elysium"] .series-cells i.done {
+    background: var(--accent);
+  }
+  :root[data-visual-theme="elysium"] .series-cells i.current {
+    background: var(--accentSoft);
+  }
 
   :root[data-visual-theme="elysium"] .library-dialog {
     background: rgba(20, 29, 33, 0.98);

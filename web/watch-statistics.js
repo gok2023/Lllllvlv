@@ -70,6 +70,8 @@
     return {
       getWatchStatistics: () => call("getWatchStatistics"),
       correctWatchLibrary: (input) => call("correctWatchLibrary", input),
+      reviewWatchStatistics: (input) => call("reviewWatchStatistics", input),
+      previewWatchStatisticsReview: (input) => call("previewWatchStatisticsReview", input),
       refreshWatchStatistics: () => call("refreshWatchStatistics"),
       getWatchStatisticsStatus: () => call("getWatchStatisticsStatus"),
       getWatchStatisticsPathStatus: () => call("getWatchStatisticsPathStatus"),
@@ -92,11 +94,47 @@
     recordSearch: "",
     gap: 15,
     excludeShort: false,
-    includeBackfill: false,
+    rewatchMinutes: 10,
     calendarYear: null,
     directorMetric: "duration",
     genresExpanded: false,
+    breakdown: null,
+    breakdownPage: { Movie: 1, Episode: 1 },
+    breakdownSearch: { Movie: "", Episode: "" },
+    watchVisit: { Movie: "all", Episode: "all" },
+    watchSeries: null,
+    watchSeason: null,
+    watchItem: null,
+    watchBatch: false,
+    watchSelection: new Set(),
+    watchOperation: "set",
+    watchTarget: 2,
+    watchEstimate: false,
+    watchPreview: null,
+    watchPreviewVersion: 0,
+    watchPreviewFilter: "changed",
+    watchPreviewPage: 1,
+    watchStatus: "",
+    candidatePage: 1,
+    candidateType: "all",
+    candidateVisit: "all",
+    candidateSearch: "",
+    candidateSelection: new Set(),
   };
+  function invalidateWatchPreview() {
+    state.watchPreview = null;
+    state.watchPreviewVersion++;
+    state.watchPreviewPage = 1;
+  }
+  function watchPreviewSignature(snapshot, ids) {
+    const media = new Map((snapshot?.media || []).map((item) => [item.id, item]));
+    return JSON.stringify(ids.map((id) => ({
+      id,
+      runtimeSec: media.get(id)?.runtimeSec,
+      confirmations: (snapshot?.confirmations || []).filter((entry) => entry.itemId === id),
+      backfill: (snapshot?.backfill || []).filter((entry) => entry.itemId === id),
+    })));
+  }
   const motion = new Map();
   function showSyncStatus(status) {
     updateRefreshStatus(status);
@@ -262,15 +300,19 @@
       .filter(fitsFocus);
   }
   function selectedBackfill() {
-    if (!state.includeBackfill || state.period !== "all") return [];
+    if (state.period !== "all") return [];
     if (state.focus?.type === "day" || state.focus?.type === "device") return [];
-    const recorded = new Set(rawRecords().map((r) => String(r.itemId)));
     const seen = new Set();
-    return (state.snapshot?.backfill || [])
+    return [
+      ...(state.snapshot?.backfill || []),
+      ...(state.snapshot?.confirmations || [])
+        .filter((c) => c.estimatedDurationSec)
+        .map((c) => ({ itemId: c.itemId, durationSec: c.estimatedDurationSec, id: c.id })),
+    ]
       .filter((b) => {
         const id = String(b.itemId);
-        if (recorded.has(id) || seen.has(id) || !valid(b.durationSec)) return false;
-        seen.add(id);
+        if (seen.has(b.id || id) || !valid(b.durationSec)) return false;
+        seen.add(b.id || id);
         return true;
       })
       .map((b) => {
@@ -418,22 +460,653 @@
     }
     return [...map].sort((a, b) => b[1] - a[1]);
   }
+  function pageControls(container, page, pages, change) {
+    const nav = document.createElement("div");
+    nav.className = "review-paging";
+    const prev = document.createElement("button");
+    prev.type = "button";
+    prev.textContent = "上一页";
+    prev.disabled = page <= 1;
+    prev.onclick = () => change(page - 1);
+    const next = document.createElement("button");
+    next.type = "button";
+    next.textContent = "下一页";
+    next.disabled = page >= pages;
+    next.onclick = () => change(page + 1);
+    const label = document.createElement("span");
+    label.textContent = `${page} / ${pages} 页`;
+    nav.append(prev, label, next);
+    container.append(nav);
+  }
+  function emptyWatch() {
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = "暂无匹配的已确认作品";
+    return p;
+  }
+  function watchRow(parent, title, detail, open, id, rerender) {
+    const row = document.createElement("div");
+    row.className = "link-row watch-row";
+    if (id && state.watchBatch) {
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = state.watchSelection.has(id);
+      box.setAttribute("aria-label", `选择 ${title}`);
+      box.onchange = () => {
+        if (box.checked) state.watchSelection.add(id);
+        else state.watchSelection.delete(id);
+        invalidateWatchPreview();
+        rerender();
+      };
+      row.append(box);
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "watch-row-button";
+    const name = document.createElement("strong");
+    name.textContent = title;
+    const meta = document.createElement("span");
+    meta.textContent = detail;
+    const arrow = document.createElement("span");
+    arrow.className = "watch-arrow";
+    arrow.textContent = "›";
+    button.append(name, meta, arrow);
+    button.onclick = open;
+    row.append(button);
+    parent.append(row);
+  }
+  function addSelectScope(parent, visible, label, all, rerender) {
+    const tools = document.createElement("div");
+    tools.className = "review-tools";
+    for (const [text, ids] of [
+      [label, all],
+      ["取消选择", all],
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      button.onclick = () => {
+        for (const id of ids) {
+          if (text === "取消选择") state.watchSelection.delete(id);
+          else state.watchSelection.add(id);
+        }
+        invalidateWatchPreview();
+        rerender();
+      };
+      tools.append(button);
+    }
+    const selected = document.createElement("span");
+    selected.className = "hint";
+    selected.textContent = `已选 ${state.watchSelection.size} 项`;
+    tools.append(selected);
+    parent.append(tools);
+  }
+  function renderWatchSeries(body, all, counts, rerender) {
+    const episodes = all.filter((m) => (m.seriesId || m.seriesName || m.id) === state.watchSeries);
+    const title = episodes[0]?.seriesName || mediaMapCache.get(state.watchSeries)?.name || "电视剧";
+    const back = document.createElement("button");
+    back.className = "watch-back";
+    back.textContent = `‹ 返回电视剧 · ${title}`;
+    back.onclick = () => {
+      state.watchSeries = null;
+      state.watchSeason = null;
+      rerender();
+    };
+    body.append(back);
+    const seasons = new Map();
+    for (const media of episodes) {
+      const key = media.seasonNumber ?? "?";
+      if (!seasons.has(key)) seasons.set(key, []);
+      seasons.get(key).push(media);
+    }
+    if (state.watchBatch)
+      addSelectScope(
+        body,
+        episodes.map((m) => m.id),
+        "选择整部剧",
+        episodes.map((m) => m.id),
+        rerender,
+      );
+    for (const [season, items] of [...seasons].sort((a, b) => Number(a[0]) - Number(b[0]))) {
+      const row = document.createElement("div");
+      row.className = "watch-season";
+      if (state.watchBatch) {
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = items.every((m) => state.watchSelection.has(m.id));
+        box.indeterminate = !box.checked && items.some((m) => state.watchSelection.has(m.id));
+        box.setAttribute("aria-label", `选择第 ${season} 季`);
+        box.onchange = () => {
+          for (const m of items) {
+            if (box.checked) state.watchSelection.add(m.id);
+            else state.watchSelection.delete(m.id);
+          }
+          invalidateWatchPreview();
+          rerender();
+        };
+        row.append(box);
+      }
+      const button = document.createElement("button");
+      button.className = "watch-row-button";
+      button.textContent = `第 ${season} 季 · ${items.length} 集 · ${items.reduce((n, m) => n + (counts.get(m.id) || 0), 0)} 集次 ${state.watchSeason === season ? "⌄" : "›"}`;
+      button.onclick = () => {
+        state.watchSeason = state.watchSeason === season ? null : season;
+        rerender();
+      };
+      row.append(button);
+      body.append(row);
+      if (state.watchSeason === season) {
+        const sorted = items.sort((a, b) => (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0));
+        const pages = Math.max(1, Math.ceil(sorted.length / 20));
+        state.breakdownPage.Episode = Math.min(state.breakdownPage.Episode, pages);
+        for (const item of sorted.slice(
+          (state.breakdownPage.Episode - 1) * 20,
+          state.breakdownPage.Episode * 20,
+        ))
+          watchRow(
+            body,
+            `S${String(item.seasonNumber ?? 0).padStart(2, "0")}E${String(item.episodeNumber ?? 0).padStart(2, "0")} ${item.name}`,
+            `${counts.get(item.id)} 刷`,
+            () => {
+              state.watchItem = { type: "Episode", id: item.id };
+              rerender();
+            },
+            item.id,
+            rerender,
+          );
+        pageControls(body, state.breakdownPage.Episode, pages, (page) => {
+          state.breakdownPage.Episode = page;
+          rerender();
+        });
+      }
+    }
+    if (state.watchBatch) renderBatchTools(body, counts, rerender);
+  }
+  function renderWatchEditor(body, id, counts, rerender) {
+    const media = mediaMapCache.get(id);
+    const back = document.createElement("button");
+    back.className = "watch-back";
+    back.textContent = "‹ 返回列表";
+    back.onclick = () => {
+      state.watchItem = null;
+      rerender();
+    };
+    body.append(back);
+    const heading = document.createElement("h3");
+    heading.textContent = media?.name || id;
+    body.append(heading);
+    const entries = (state.snapshot?.confirmations || [])
+      .filter((c) => c.itemId === id)
+      .sort((a, b) => String(b.confirmedAt || "").localeCompare(String(a.confirmedAt || "")));
+    const current = document.createElement("p");
+    current.className = "hint";
+    current.textContent = `当前已确认 ${entries.length} 次`;
+    body.append(current);
+    const history = document.createElement("div");
+    history.className = "watch-history";
+    const oldEstimate = (state.snapshot?.backfill || []).find((backfill) => backfill.itemId === id && backfill.durationSec > 0);
+    if (oldEstimate) {
+      const row = document.createElement("div");
+      row.className = "watch-history-row";
+      row.textContent = `旧历史补录估算 ${duration(oldEstimate.durationSec)} · 与确认记录无明确关联`;
+      history.append(row);
+    }
+    for (const entry of entries) {
+      const row = document.createElement("div");
+      row.className = "watch-history-row";
+      const label = document.createElement("span");
+      label.textContent = `${entry.confirmedAt ? dayKey(new Date(entry.confirmedAt)) : "日期未知"} · ${entry.source === "manual" ? "历史补记" : entry.source === "initial" ? "历史初始化" : "观看确认"}${entry.estimatedDurationSec ? ` · 历史估算 ${duration(entry.estimatedDurationSec)}` : ""}`;
+      const revoke = document.createElement("button");
+      revoke.textContent = "撤销";
+      revoke.onclick = () => {
+        if (window.confirm("撤销这次确认及其关联历史估算？"))
+          void review({ action: "revoke", confirmationId: entry.id });
+      };
+      row.append(label, revoke);
+      history.append(row);
+    }
+    body.append(history);
+    state.watchSelection.clear();
+    state.watchSelection.add(id);
+    renderBatchTools(body, counts, rerender);
+  }
+  function renderBatchTools(body, counts, rerender) {
+    const ids = [...state.watchSelection];
+    const panel = document.createElement("div");
+    panel.className = "watch-editor";
+    const title = document.createElement("strong");
+    title.textContent = `修正与补记 · 已选 ${ids.length} ${state.breakdown === "Movie" ? "部" : "集"}`;
+    const controls = document.createElement("div");
+    controls.className = "review-tools";
+    const mode = document.createElement("select");
+    mode.className = "select";
+    for (const [value, label] of [
+      ["set", "设置累计总次数"],
+      ["increase", "增加一次观看"],
+      ["decrease", "减少一次观看"],
+      ["estimate", "仅修改历史估算"],
+    ]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      mode.append(option);
+    }
+    mode.value = state.watchOperation;
+    mode.onchange = () => {
+      state.watchOperation = mode.value;
+      invalidateWatchPreview();
+      rerender();
+    };
+    const target = document.createElement("input");
+    target.type = "number";
+    target.min = "0";
+    target.max = "100";
+    target.value = String(state.watchTarget);
+    target.setAttribute("aria-label", "目标累计次数");
+    target.hidden = state.watchOperation !== "set";
+    target.onchange = () => {
+      state.watchTarget = num(target.value);
+      invalidateWatchPreview();
+      while (panel.children.length > 2) panel.lastChild.remove();
+    };
+    const estimate = document.createElement("label");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = state.watchEstimate;
+    box.onchange = () => {
+      state.watchEstimate = box.checked;
+      invalidateWatchPreview();
+      rerender();
+    };
+    estimate.append(
+      box,
+      document.createTextNode(
+        state.watchOperation === "estimate"
+          ? "补充历史估算（取消则清除）"
+          : state.watchOperation === "decrease"
+            ? "优先撤销带历史估算的确认"
+            : state.watchOperation === "set"
+              ? "新增时补估算；减少时优先撤销估算"
+              : "新增确认时补充片长估算",
+      ),
+    );
+    const preview = document.createElement("button");
+    preview.type = "button";
+    preview.textContent = "预览修改";
+    preview.disabled = !ids.length;
+    preview.onclick = async () => {
+      const version = ++state.watchPreviewVersion;
+      state.watchPreview = null;
+      preview.disabled = true;
+      preview.textContent = "正在预览…";
+      try {
+        const input = {
+          action: "batch",
+          itemIds: ids,
+          mode: state.watchOperation,
+          ...(state.watchOperation === "set" ? { totalCount: state.watchTarget } : {}),
+          ...(state.watchOperation === "estimate"
+            ? { estimated: state.watchEstimate }
+            : { estimate: state.watchEstimate }),
+        };
+        const result = await api.previewWatchStatisticsReview(input);
+        if (version !== state.watchPreviewVersion) {
+          state.watchStatus = "观看确认已更新，请重新预览";
+          render();
+          return;
+        }
+        state.watchPreview = {
+          input,
+          result,
+          operationId: globalThis.crypto.randomUUID
+            ? globalThis.crypto.randomUUID()
+            : `10000000-1000-4000-8000-${[...globalThis.crypto.getRandomValues(new Uint8Array(6))].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`,
+        };
+        state.watchPreviewFilter = "changed";
+        state.watchPreviewPage = 1;
+        state.watchStatus = "";
+        rerender();
+      } catch (error) {
+        if (version === state.watchPreviewVersion) {
+          state.watchPreview = null;
+          state.watchStatus = `预览失败：${error?.message || String(error)}`;
+          rerender();
+        }
+      } finally {
+        preview.disabled = false;
+        preview.textContent = "预览修改";
+      }
+    };
+    controls.append(mode, target, estimate, preview);
+    panel.append(title, controls);
+    if (state.watchPreview && ids.join("|") === state.watchPreview.input.itemIds.join("|")) {
+      const currentPreview = state.watchPreview;
+      const result = currentPreview.result;
+      const info = document.createElement("p");
+      info.className = "hint";
+      info.textContent = `${result.itemCount} 项，${result.changedCount} 项变化 · 次数 ${result.countBefore} → ${result.countAfter}（${result.countDelta >= 0 ? "+" : ""}${result.countDelta}） · 历史估算 ${duration(result.estimateBeforeSec)} → ${duration(result.estimateAfterSec)}（${result.estimateDeltaSec >= 0 ? "+" : "-"}${duration(Math.abs(result.estimateDeltaSec))}） · 实际播放时长不变`;
+      panel.append(info);
+      const filter = document.createElement("select");
+      filter.className = "select";
+      filter.setAttribute("aria-label", "预览明细筛选");
+      for (const [value, label] of [
+        ["all", "全部"],
+        ["changed", "有变化"],
+        ["unchanged", "无变化"],
+      ]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        filter.append(option);
+      }
+      filter.value = state.watchPreviewFilter;
+      filter.onchange = () => {
+        state.watchPreviewFilter = filter.value;
+        state.watchPreviewPage = 1;
+        rerender();
+      };
+      panel.append(filter);
+      const details = document.createElement("div");
+      details.className = "watch-history";
+      const filtered = result.items.filter(
+        (item) =>
+          state.watchPreviewFilter === "all" ||
+          item.changed === (state.watchPreviewFilter === "changed"),
+      );
+      filtered.sort(
+        (a, b) => Number(b.changed) - Number(a.changed) || a.itemId.localeCompare(b.itemId),
+      );
+      const pages = Math.max(1, Math.ceil(filtered.length / 20));
+      state.watchPreviewPage = Math.min(state.watchPreviewPage, pages);
+      for (const item of filtered.slice(
+        (state.watchPreviewPage - 1) * 20,
+        state.watchPreviewPage * 20,
+      )) {
+        const media = mediaMapCache.get(item.itemId);
+        const row = document.createElement("div");
+        row.className = "watch-history-row";
+        const label = document.createElement("span");
+        const title =
+          media?.type === "Episode"
+            ? `${media.seriesName || "电视剧"} · S${String(media.seasonNumber ?? "?").padStart(2, "0")}E${String(media.episodeNumber ?? "?").padStart(2, "0")} ${media.name}`
+            : media?.name || item.itemId;
+        const countDelta = item.afterCount - item.beforeCount;
+        const estimateDelta = item.estimateDeltaSec;
+        label.textContent = `${item.changed ? "有变化" : "无变化"} · ${title} · 次数 ${item.beforeCount} → ${item.afterCount}（${countDelta >= 0 ? "+" : ""}${countDelta}） · 历史估算 ${duration(item.estimateBeforeSec)} → ${duration(item.estimateAfterSec)}（${estimateDelta >= 0 ? "+" : "-"}${duration(Math.abs(estimateDelta))}，${item.estimatedBeforeCount} → ${item.estimatedAfterCount} 次） · 实播时长不变${item.estimateUnavailable ? " · 缺片长，无法估算" : ""}`;
+        row.append(label);
+        details.append(row);
+      }
+      if (!filtered.length) {
+        const empty = document.createElement("p");
+        empty.className = "hint";
+        empty.textContent = "暂无符合条件的项目";
+        details.append(empty);
+      }
+      panel.append(details);
+      pageControls(panel, state.watchPreviewPage, pages, (page) => {
+        state.watchPreviewPage = page;
+        rerender();
+      });
+      const apply = document.createElement("button");
+      apply.textContent = "确认应用";
+      apply.disabled = !result.changedCount;
+      apply.onclick = async () => {
+        if (state.watchPreview !== currentPreview) return;
+        apply.disabled = true;
+        try {
+          await review({
+            ...currentPreview.input,
+            token: result.token,
+            operationId: currentPreview.operationId,
+          });
+        } finally {
+          apply.disabled = false;
+        }
+      };
+      panel.append(apply);
+    }
+    body.append(panel);
+  }
+  function showWatchError(parent, error) {
+    const message = document.createElement("p");
+    message.className = "hint";
+    message.role = "status";
+    message.textContent = error?.message || String(error);
+    parent.append(message);
+  }
+  function renderBreakdown(type, bodyId, counts, buckets) {
+    const body = $(bodyId);
+    let summary = body.querySelector(":scope > .breakdown-summary");
+    if (!summary) {
+      summary = document.createElement("p");
+      summary.className = "hint breakdown-summary";
+      body.append(summary);
+    }
+    let status = body.querySelector(":scope > .breakdown-status");
+    if (!status) {
+      status = document.createElement("p");
+      status.className = "hint breakdown-status";
+      status.role = "status";
+      body.append(status);
+    }
+    let toolbar = body.querySelector(":scope > .breakdown-toolbar");
+    if (!toolbar) {
+      toolbar = document.createElement("div");
+      toolbar.className = "review-tools breakdown-toolbar";
+      body.append(toolbar);
+    }
+    let results = body.querySelector(":scope > .breakdown-results");
+    if (!results) {
+      results = document.createElement("div");
+      results.className = "breakdown-results";
+      body.append(results);
+    }
+    results.replaceChildren();
+    const unit = type === "Movie" ? "部" : "集";
+    const total = [...counts.values()].reduce((sum, n) => sum + n, 0);
+    summary.textContent = `累计 ${total} ${unit}次 · 不同作品 ${counts.size} ${unit} · ${
+      [...buckets]
+        .sort((a, b) => a[0] - b[0])
+        .map(([n, c]) => `${n} 刷 ${c} ${unit}`)
+        .join(" · ") || "暂无确认"
+    }`;
+    status.textContent = state.watchStatus;
+    status.hidden = !state.watchStatus;
+    const rerender = () => renderBreakdown(type, bodyId, counts, buckets);
+    let search = toolbar.querySelector(".record-search");
+    if (!search) {
+      search = document.createElement("input");
+      search.type = "search";
+      search.className = "record-search";
+      search.placeholder = "搜索作品";
+      search.value = state.breakdownSearch[type];
+      search.addEventListener("compositionstart", () => {
+        search.isComposing = true;
+      });
+      search.addEventListener("compositionend", () => {
+        search.isComposing = false;
+        search.commitSearch();
+      });
+      toolbar.append(search);
+    }
+    const updateSearch = () => {
+      state.breakdownSearch[type] = search.value;
+      state.breakdownPage[type] = 1;
+      rerender();
+    };
+    search.commitSearch = updateSearch;
+    search.oninput = (event) => {
+      if (search.isComposing || event.isComposing) return;
+      updateSearch();
+    };
+    let visit = toolbar.querySelector(".breakdown-visit");
+    if (!visit) {
+      visit = document.createElement("select");
+      visit.className = "select breakdown-visit";
+      visit.setAttribute("aria-label", "按刷次筛选");
+      for (const [value, label] of [
+        ["all", "全部刷次"],
+        ["1", "一刷"],
+        ["2", "二刷"],
+        ["3", "三刷"],
+        ["4", "四刷及以上"],
+      ]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        visit.append(option);
+      }
+      toolbar.append(visit);
+    }
+    visit.value = state.watchVisit[type];
+    visit.onchange = () => {
+      state.watchVisit[type] = visit.value;
+      state.breakdownPage[type] = 1;
+      rerender();
+    };
+    let batch = toolbar.querySelector(".breakdown-batch");
+    if (!batch) {
+      batch = document.createElement("button");
+      batch.type = "button";
+      batch.className = "breakdown-batch";
+      toolbar.append(batch);
+    }
+    batch.textContent = state.watchBatch ? "退出批量管理" : "批量管理";
+    batch.onclick = () => {
+      state.watchBatch = !state.watchBatch;
+      state.watchSelection.clear();
+      invalidateWatchPreview();
+      rerender();
+    };
+    const all = [...(state.snapshot?.media || [])].filter((m) => m.type === type);
+    const fits = (n) =>
+      state.watchVisit[type] === "all" ||
+      (state.watchVisit[type] === "4" ? n >= 4 : n === Number(state.watchVisit[type]));
+    const matched = all.filter(
+      (m) =>
+        (counts.get(m.id) || 0) > 0 &&
+        fits(counts.get(m.id) || 0) &&
+        `${m.seriesName || ""} ${m.name}`
+          .toLocaleLowerCase()
+          .includes(state.breakdownSearch[type].trim().toLocaleLowerCase()),
+    );
+    if (state.watchItem && state.watchItem.type === type) {
+      renderWatchEditor(results, state.watchItem.id, counts, rerender);
+      return;
+    }
+    if (type === "Episode" && state.watchSeries) {
+      renderWatchSeries(results, all, counts, rerender);
+      return;
+    }
+    if (type === "Movie") {
+      const sorted = matched.sort(
+        (a, b) => counts.get(b.id) - counts.get(a.id) || a.name.localeCompare(b.name),
+      );
+      const pages = Math.max(1, Math.ceil(sorted.length / 20));
+      state.breakdownPage[type] = Math.min(state.breakdownPage[type], pages);
+      const visible = sorted.slice(
+        (state.breakdownPage[type] - 1) * 20,
+        state.breakdownPage[type] * 20,
+      );
+      if (state.watchBatch)
+        addSelectScope(
+          results,
+          visible.map((m) => m.id),
+          "全选当前筛选结果",
+          sorted.map((m) => m.id),
+          rerender,
+        );
+      for (const media of visible)
+        watchRow(
+          results,
+          media.name,
+          `${counts.get(media.id)} 刷`,
+          () => {
+            state.watchItem = { type, id: media.id };
+            rerender();
+          },
+          media.id,
+          rerender,
+        );
+      if (!visible.length) results.append(emptyWatch());
+      pageControls(results, state.breakdownPage[type], pages, (page) => {
+        state.breakdownPage[type] = page;
+        rerender();
+      });
+    } else {
+      const series = new Map();
+      for (const media of matched) {
+        const id = media.seriesId || media.seriesName || media.id;
+        const group = series.get(id) || { id, name: media.seriesName || media.name, episodes: [] };
+        group.episodes.push(media);
+        series.set(id, group);
+      }
+      const sorted = [...series.values()].sort(
+        (a, b) =>
+          b.episodes.reduce((n, m) => n + (counts.get(m.id) || 0), 0) -
+            a.episodes.reduce((n, m) => n + (counts.get(m.id) || 0), 0) ||
+          a.name.localeCompare(b.name),
+      );
+      const pages = Math.max(1, Math.ceil(sorted.length / 20));
+      state.breakdownPage[type] = Math.min(state.breakdownPage[type], pages);
+      for (const group of sorted.slice(
+        (state.breakdownPage[type] - 1) * 20,
+        state.breakdownPage[type] * 20,
+      ))
+        watchRow(
+          results,
+          group.name,
+          `已看 ${group.episodes.length} 集 · 累计 ${group.episodes.reduce((n, m) => n + (counts.get(m.id) || 0), 0)} 集次`,
+          () => {
+            state.watchSeries = group.id;
+            state.watchSeason = null;
+            rerender();
+          },
+        );
+      if (!sorted.length) results.append(emptyWatch());
+      pageControls(results, state.breakdownPage[type], pages, (page) => {
+        state.breakdownPage[type] = page;
+        rerender();
+      });
+    }
+    if (state.watchBatch) renderBatchTools(results, counts, rerender);
+  }
   function renderOverview(records, combined, parts, activities) {
-    const actual = parts.total,
+    const actual = combined
+        .filter((r) => r.source !== "estimate")
+        .reduce((sum, r) => sum + r.clippedSeconds, 0),
       backfill = combined
         .filter((r) => r.source === "estimate")
         .reduce((n, r) => n + r.clippedSeconds, 0);
     animate("totalHours", (actual + backfill) / 3600, "小时", 1);
-    animate(
-      "moviesCount",
-      new Set(combined.filter((r) => r.type === "Movie").map((r) => r.itemId)).size,
-      "部",
-    );
-    animate(
-      "episodesCount",
-      new Set(combined.filter((r) => r.type === "Episode").map((r) => r.itemId)).size,
-      "集",
-    );
+    const counts = { Movie: new Map(), Episode: new Map() };
+    const [lo, hi] = bounds();
+    for (const confirmation of state.snapshot.confirmations || []) {
+      const media = mediaMapCache.get(confirmation.itemId);
+      if (!counts[media?.type]) continue;
+      if (
+        lo &&
+        (!confirmation.confirmedAt ||
+          +new Date(confirmation.confirmedAt) < +lo ||
+          +new Date(confirmation.confirmedAt) > +hi)
+      )
+        continue;
+      counts[media.type].set(media.id, (counts[media.type].get(media.id) || 0) + 1);
+    }
+    for (const [type, target, body] of [
+      ["Movie", "moviesCount", "movieBreakdownBody"],
+      ["Episode", "episodesCount", "episodeBreakdownBody"],
+    ]) {
+      const values = [...counts[type].values()];
+      animate(
+        target,
+        values.reduce((sum, n) => sum + n, 0),
+        type === "Movie" ? "部次" : "集次",
+      );
+      const buckets = new Map();
+      for (const n of values) buckets.set(n, (buckets.get(n) || 0) + 1);
+      renderBreakdown(type, body, counts[type], buckets);
+    }
     animate("activeDays", [...parts.daily.values()].filter(Boolean).length, "天");
     $("timeFoot").textContent = `实际 ${hours(actual)} · 历史补录估算 ${hours(backfill)}`;
     $("daysFoot").textContent = `${records.length} 次播放 · ${activities.length} 次观影活动`;
@@ -550,6 +1223,7 @@
           id: m.id,
           name: m.name,
           library: m.libraryName || "未匹配",
+          episodes: [],
           total: 0,
           watched: 0,
         });
@@ -559,9 +1233,11 @@
         id: ep.seriesId,
         name: ep.seriesName || "未知剧集",
         library: ep.libraryName || "未匹配",
+        episodes: [],
         total: 0,
         watched: 0,
       };
+      s.episodes.push(ep);
       s.total++;
       if (ep.played) s.watched++;
       series.set(s.id, s);
@@ -599,11 +1275,16 @@
       row.className = "series-row";
       row.tabIndex = 0;
       row.role = "button";
-      const cells = Array.from(
-        { length: Math.min(s.total, 150) },
-        (_, i) => `<i class="${i < s.watched ? "done" : i === s.watched ? "current" : ""}"></i>`,
-      ).join("");
-      row.innerHTML = `<div class="series-top"><span class="series-name">${esc(s.name)}</span><span class="series-num">${s.watched} / ${s.total} 集</span></div><div class="series-cells">${cells}</div><div class="series-bottom"><span>${esc(s.library)} · ${last.has(s.id) ? "最近观看 " + dayKey(last.get(s.id)) : "暂无播放记录"}</span><span>${s.watched === s.total ? "已看完" : "还有 " + (s.total - s.watched) + " 集未观看"}</span></div>`;
+      const ordered = s.episodes.sort(
+        (a, b) =>
+          (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0) ||
+          (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0),
+      );
+      const current = ordered.findIndex((ep) => !ep.played);
+      const cells = ordered
+        .map((ep, i) => `<i class="${ep.played ? "done" : i === current ? "current" : ""}"></i>`)
+        .join("");
+      row.innerHTML = `<div class="series-top"><span class="series-name">${esc(s.name)}</span><span class="series-num">${s.watched} / ${s.total} 集</span></div><div class="series-cells" style="--series-columns:${Math.min(s.total, 50)}">${cells}</div><div class="series-bottom"><span>${esc(s.library)} · ${last.has(s.id) ? "最近观看 " + dayKey(last.get(s.id)) : "暂无播放记录"}</span><span>${s.watched === s.total ? "已看完" : "还有 " + (s.total - s.watched) + " 集未观看"}</span></div>`;
       row.onclick = () => setFocus("series", s.id, s.name);
       row.onkeydown = (e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -852,7 +1533,20 @@
     );
     mediaMapCache = mediaMap();
     const records = selectedRecords(),
-      combined = [...records, ...selectedBackfill()],
+      effectiveRecords =
+        state.period === "all"
+          ? records.filter(
+              (r) =>
+                !(state.snapshot?.backfill || []).some(
+                  (b) =>
+                    b.itemId === r.itemId &&
+                    b.baselineAt &&
+                    new Date(r.startAt) <= new Date(b.baselineAt) &&
+                    !(b.baselineRecordIds || []).includes(r.id),
+                ),
+            )
+          : records,
+      combined = [...effectiveRecords, ...selectedBackfill()],
       combinedTotal = combined.reduce((n, r) => n + r.clippedSeconds, 0),
       parts = slices(records),
       activities = groups(records);
@@ -862,10 +1556,11 @@
     $("backfillHint").textContent =
       state.period !== "all"
         ? "历史补录估算仅计入“全部”时间范围。"
-        : state.includeBackfill && !selectedBackfill().length
+        : !selectedBackfill().length
           ? "暂无可用历史补录。"
           : "";
     renderOverview(records, combined, parts, activities);
+    renderReview();
     renderCalendar(parts);
     renderHabits(parts);
     renderSeries();
@@ -878,15 +1573,203 @@
       }
     }
   }
+  function renderReview() {
+    const media = (state.snapshot.media || []).filter(
+      (m) => m.type === "Movie" || m.type === "Episode",
+    );
+    const pending = (state.snapshot.candidates || []).filter(
+      (c) => c.status === "pending" || c.status === "later",
+    );
+    const pendingIds = new Set(pending.map((c) => c.itemId));
+    for (const id of state.candidateSelection)
+      if (!pendingIds.has(id)) state.candidateSelection.delete(id);
+    $("candidateCount").textContent = String(pending.length);
+    const mediaById = new Map(media.map((m) => [m.id, m]));
+    const confirmationCount = new Map();
+    for (const entry of state.snapshot.confirmations || [])
+      confirmationCount.set(entry.itemId, (confirmationCount.get(entry.itemId) || 0) + 1);
+    const matches = pending.filter((c) => {
+      const item = mediaById.get(c.itemId),
+        n = confirmationCount.get(c.itemId) || 0;
+      return (
+        (state.candidateType === "all" || item?.type === state.candidateType) &&
+        (state.candidateVisit === "all" || (state.candidateVisit === "first" ? n === 0 : n > 0)) &&
+        `${item?.seriesName || ""} ${item?.name || c.itemId}`
+          .toLocaleLowerCase()
+          .includes(state.candidateSearch.trim().toLocaleLowerCase())
+      );
+    });
+    const pages = Math.max(1, Math.ceil(matches.length / 20));
+    state.candidatePage = Math.min(state.candidatePage, pages);
+    const visible = matches.slice((state.candidatePage - 1) * 20, state.candidatePage * 20);
+    const list = $("candidateList");
+    list.replaceChildren();
+    if (!visible.length) list.textContent = "暂无匹配的待确认观看";
+    for (const candidate of visible) {
+      const item = mediaById.get(candidate.itemId);
+      const evidence = (state.snapshot.records || []).filter((r) =>
+        candidate.evidenceIds.includes(r.id),
+      );
+      const count = confirmationCount.get(candidate.itemId) || 0;
+      const row = document.createElement("div");
+      row.className = "link-row review-entry";
+      const label = document.createElement("label"),
+        checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = state.candidateSelection.has(candidate.itemId);
+      checkbox.onchange = () => {
+        if (checkbox.checked) state.candidateSelection.add(candidate.itemId);
+        else state.candidateSelection.delete(candidate.itemId);
+        updateCandidateSelection(visible);
+      };
+      label.append(
+        checkbox,
+        document.createTextNode(
+          ` ${item?.seriesName ? item.seriesName + " · " : ""}${item?.name || candidate.itemId} · ${count ? "重温" : "首次"} · 已确认 ${count} 次 · 本轮 ${duration(evidence.reduce((n, r) => n + valid(r.durationSec), 0))} · 可能第 ${count + 1} 次 · ${evidence.length ? dayKey(new Date(evidence.at(-1).startAt)) : "Jellyfin 已观看状态"}`,
+        ),
+      );
+      row.append(label);
+      for (const [action, text] of [
+        ["confirm", "确认完成"],
+        ["later", "稍后"],
+        ["ignore", "忽略本次"],
+      ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = text;
+        button.onclick = () => void review({ action, itemIds: [candidate.itemId] });
+        row.append(button);
+      }
+      list.append(row);
+    }
+    $("candidatePageInfo").textContent =
+      `${state.candidatePage} / ${pages} 页 · ${matches.length} 项`;
+    $("candidatePrev").disabled = state.candidatePage <= 1;
+    $("candidateNext").disabled = state.candidatePage >= pages;
+    updateCandidateSelection(visible);
+  }
+  function updateCandidateSelection(visible) {
+    const box = $("candidateSelectPage");
+    box.checked =
+      visible.length > 0 && visible.every((c) => state.candidateSelection.has(c.itemId));
+    box.indeterminate = !box.checked && visible.some((c) => state.candidateSelection.has(c.itemId));
+    $("candidateSelection").textContent = `本页已选 ${state.candidateSelection.size} 项`;
+    $("candidateBatch").disabled = !state.candidateSelection.size;
+  }
+  async function review(input) {
+    if (input.itemIds && !input.itemIds.length) return;
+    try {
+      const result = await api.reviewWatchStatistics(input);
+      invalidateWatchPreview();
+      state.watchStatus = "修改已保存";
+      if (result) applySnapshot(result, false);
+      return true;
+    } catch (error) {
+      showWatchError($("breakdownContent"), error);
+      return false;
+    }
+  }
+  function setBreakdown(type) {
+    state.breakdown = state.breakdown === type ? null : type;
+    state.watchItem = null;
+    state.watchSeries = null;
+    state.watchSeason = null;
+    state.watchBatch = false;
+    state.watchSelection.clear();
+    invalidateWatchPreview();
+    $("breakdownShell").classList.toggle("open", !!state.breakdown);
+    $("breakdownShell").inert = !state.breakdown;
+    $("breakdownShell").setAttribute("aria-hidden", String(!state.breakdown));
+    $("movieBreakdown").hidden = state.breakdown !== "Movie";
+    $("episodeBreakdown").hidden = state.breakdown !== "Episode";
+    for (const [kind, id] of [
+      ["Movie", "moviesCount"],
+      ["Episode", "episodesCount"],
+    ])
+      $(id).setAttribute("aria-expanded", String(state.breakdown === kind));
+  }
+  $("breakdownShell").inert = true;
+  $("breakdownShell").setAttribute("aria-hidden", "true");
+  $("moviesCount").closest(".kpi").onclick = () => setBreakdown("Movie");
+  $("episodesCount").closest(".kpi").onclick = () => setBreakdown("Episode");
+  for (const [id, kind] of [
+    ["moviesCount", "Movie"],
+    ["episodesCount", "Episode"],
+  ]) {
+    $(id).role = "button";
+    $(id).tabIndex = 0;
+    $(id).setAttribute("aria-controls", "breakdownShell");
+    $(id).setAttribute("aria-expanded", "false");
+    $(id).onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setBreakdown(kind);
+      }
+    };
+  }
+  for (const [id, key] of [
+    ["candidateType", "candidateType"],
+    ["candidateVisit", "candidateVisit"],
+  ]) {
+    $(id).onchange = () => {
+      state[key] = $(id).value;
+      state.candidatePage = 1;
+      state.candidateSelection.clear();
+      renderReview();
+    };
+  }
+  const candidateSearch = $("candidateSearch");
+  const updateCandidateSearch = () => {
+    state.candidateSearch = candidateSearch.value;
+    state.candidatePage = 1;
+    state.candidateSelection.clear();
+    renderReview();
+  };
+  candidateSearch.addEventListener("compositionstart", () => {
+    candidateSearch.isComposing = true;
+  });
+  candidateSearch.oninput = (event) => {
+    if (!candidateSearch.isComposing && !event.isComposing) updateCandidateSearch();
+  };
+  candidateSearch.addEventListener("compositionend", () => {
+    candidateSearch.isComposing = false;
+    updateCandidateSearch();
+  });
+  $("candidatePrev").onclick = () => {
+    state.candidatePage--;
+    state.candidateSelection.clear();
+    renderReview();
+  };
+  $("candidateNext").onclick = () => {
+    state.candidatePage++;
+    state.candidateSelection.clear();
+    renderReview();
+  };
+  $("candidateSelectPage").onchange = () => {
+    const select = $("candidateSelectPage").checked;
+    for (const row of $("candidateList").children) {
+      const checkbox = row.querySelector("input[type=checkbox]");
+      if (checkbox) {
+        checkbox.checked = select;
+        checkbox.dispatchEvent(new Event("change"));
+      }
+    }
+  };
+  $("candidateBatch").onclick = () =>
+    void review({ action: "confirm", itemIds: [...state.candidateSelection] });
   function applySnapshot(result, restoreSettings) {
+    const ids = state.watchPreview?.input.itemIds || [...state.watchSelection];
+    if (!state.snapshot || !ids.length ||
+        watchPreviewSignature(state.snapshot, ids) !== watchPreviewSignature(result, ids))
+      invalidateWatchPreview();
     state.snapshot = result;
     if (restoreSettings) {
       state.gap = num(result.settings?.gapMinutes) || 15;
       state.excludeShort = !!result.settings?.excludeShort;
-      state.includeBackfill = !!result.settings?.includeBackfill;
+      state.rewatchMinutes = num(result.settings?.rewatchMinutes) || 10;
+      $("rewatchMinutes").value = String(state.rewatchMinutes);
       $("gapSelect").value = String(state.gap);
       $("excludeShort").checked = state.excludeShort;
-      $("includeBackfill").checked = state.includeBackfill;
     }
     render();
     $("refreshStatus").textContent =
@@ -943,7 +1826,8 @@
       await api.saveWatchStatisticsSettings({
         gapMinutes: state.gap,
         excludeShort: state.excludeShort,
-        includeBackfill: state.includeBackfill,
+        includeBackfill: true,
+        rewatchMinutes: state.rewatchMinutes,
       });
     } catch (error) {
       $("refreshStatus").textContent = `设置保存失败：${error?.message || String(error)}`;
@@ -1031,19 +1915,14 @@
     render();
     void save();
   };
+  $("rewatchMinutes").onchange = (e) => {
+    state.rewatchMinutes = Math.max(1, Math.min(240, num(e.target.value) || 10));
+    e.target.value = String(state.rewatchMinutes);
+    void save();
+  };
   $("excludeShort").onchange = (e) => {
     state.excludeShort = e.target.checked;
     state.activityPage = 1;
-    render();
-    void save();
-  };
-  $("includeBackfill").onchange = (e) => {
-    state.includeBackfill = e.target.checked;
-    if (state.includeBackfill && state.period !== "all") {
-      state.period = "all";
-      state.focus = null;
-      state.calendarYear = null;
-    }
     render();
     void save();
   };
@@ -1052,11 +1931,22 @@
     state.activityPage = 1;
     render();
   };
-  $("recordSearch").oninput = (e) => {
-    state.recordSearch = e.target.value.trim().toLocaleLowerCase();
+  const recordSearch = $("recordSearch");
+  const updateRecordSearch = () => {
+    state.recordSearch = recordSearch.value.trim().toLocaleLowerCase();
     state.activityPage = 1;
     render();
   };
+  recordSearch.addEventListener("compositionstart", () => {
+    recordSearch.isComposing = true;
+  });
+  recordSearch.oninput = (event) => {
+    if (!recordSearch.isComposing && !event.isComposing) updateRecordSearch();
+  };
+  recordSearch.addEventListener("compositionend", () => {
+    recordSearch.isComposing = false;
+    updateRecordSearch();
+  });
   $("seriesTabs").onclick = (e) => {
     const b = e.target.closest("[data-series]");
     if (b) {
