@@ -2,20 +2,20 @@
 
 <h1 align="center">Lllllvlv</h1>
 
-<p align="center">A personalized desktop media client based on Freebo</p>
+<p align="center">A personal desktop media client based on open-source Freebo</p>
 
 [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-193C35?style=flat&logo=googletranslate&logoColor=white)](README.md)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-193C35?style=flat)](LICENSE)
 [![macOS, Windows, Linux](https://img.shields.io/badge/Platforms-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-193C35?style=flat)](#features)
 [![Changelog](https://img.shields.io/badge/Changelog-193C35?style=flat)](CHANGELOG.md)
 
-**A free, open-source desktop media client. Browse your familiar library and watch with your favorite local player.**
+**Browse your familiar library and watch with your favorite local player. Lllllvlv builds on open-source Freebo with personal viewing management and desktop customization.**
 
-**Free** means both free of charge and free to choose your player. Freebo has no subscription or format unlock fees and runs on macOS, Windows and Linux. Add a server, sign in on its website, and press play to open your local player.
+[Freebo](https://github.com/elonzh/freebo) is free and open-source software that connects Emby, Jellyfin and Plex websites to local players. Lllllvlv is an independent fork with its own name and icon. Players must be installed separately; users provide their own media and servers.
 
-## Why Freebo exists
+## Why Lllllvlv exists
 
-Your library already organizes your videos, and your computer already has a player you like. Freebo brings them together so browsing, watching and resuming feel connected. Keep your media server’s website, watch in your chosen local player, and sync progress back to your library.
+Lllllvlv keeps Freebo's familiar library websites and local playback flow while adding the viewing history, confirmations, appearance and data controls needed for personal use. It does not provide a media service or content.
 
 ## Features
 
@@ -26,6 +26,13 @@ Your library already organizes your videos, and your computer already has a play
 - Installed player discovery, manual path selection and [custom players](docs/development.md#自定义播放器).
 - English and Chinese, light and dark appearance, and remembered window size and position.
 - Keep playing in the background when the main window closes; reopen or quit from the tray.
+
+### Extensions in this fork
+
+- Jellyfin viewing statistics add watch confirmations, viewing-count corrections and historical estimates. Estimates are shown separately from actual playback time; this statistics feature currently supports Jellyfin only.
+- Add an ordinary HTTP(S) website as a Web Service tab. It supports browsing, without playback interception or progress sync.
+- Lllllvlv branding, an optional startup video and the Elysium visual theme. The source repository does not include the original artwork; the v1.2.1 Windows release bundles official public wallpapers selected by the user. Copyright remains with the original creators, and the artwork is not covered by this project's Apache-2.0 code license.
+- Choose a user-data directory from Diagnostics on Windows. Upstream automatic updates are disabled in this fork.
 
 | System  | Players                                      |
 | ------- | -------------------------------------------- |
@@ -55,4 +62,4 @@ See the [development workflow](docs/development.md) for running from source, che
 
 Thanks to [embyToLocalPlayer](https://github.com/kjtsune/embyToLocalPlayer) for protocol and behavior references.
 
-This project is based on [the original Freebo project](https://github.com/elonzh/freebo). Thanks to its author and contributors.
+Lllllvlv is based on [the original Freebo project](https://github.com/elonzh/freebo). Thanks to its author, elonzh, and contributors. Freebo's attribution and Apache-2.0 terms are retained in [NOTICE](NOTICE) and [LICENSE](LICENSE); this fork's source changes are also released under that license. Elysium wallpapers remain copyrighted by their original creators and are not covered by the Apache-2.0 code license.

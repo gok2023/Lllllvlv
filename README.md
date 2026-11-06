@@ -2,20 +2,20 @@
 
 <h1 align="center">Lllllvlv</h1>
 
-<p align="center">基于 Freebo 的个人定制版桌面影音客户端</p>
+<p align="center">基于开源 Freebo 的个人定制桌面影音客户端</p>
 
 [![English](https://img.shields.io/badge/English-193C35?style=flat&logo=googletranslate&logoColor=white)](README.en.md)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-193C35?style=flat)](LICENSE)
 [![macOS, Windows, Linux](https://img.shields.io/badge/Platforms-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-193C35?style=flat)](#功能)
 [![更新说明](https://img.shields.io/badge/%E6%9B%B4%E6%96%B0%E8%AF%B4%E6%98%8E-193C35?style=flat)](CHANGELOG.md)
 
-**免费开源的桌面影音客户端。在熟悉的媒体库里浏览，用喜欢的本地播放器观看。**
+**在熟悉的媒体库里浏览，用喜欢的本地播放器观看。Lllllvlv 在开源 Freebo 的基础上，加入个人观影管理与桌面外观定制。**
 
-Freebo(福瑞播) 的 **Free** 既是免费，也是自由选择播放器。软件没有订阅或播放格式解锁费用，支持 macOS、Windows 和 Linux。添加服务器，在网页中登录，点击播放即可打开本地播放器。
+上游 [Freebo](https://github.com/elonzh/freebo) 是免费开源软件，负责将 Emby、Jellyfin、Plex 的网页浏览与本地播放器连接起来。Lllllvlv 是基于它的独立分支，使用自己的名称与图标；播放器需另行安装，媒体与服务器由用户自行提供。
 
-## 为什么做 Freebo
+## 为什么做 Lllllvlv
 
-媒体库已经整理好了影片，电脑上也有喜欢的播放器。做 Freebo，就是想把它们连接起来，让找影片、看片和续播顺畅衔接。保留媒体服务器的网页浏览体验，用自己选好的播放器观看，并将观看进度同步回媒体库。
+保留 Freebo 熟悉的媒体库网页与本地播放流程，补上个人使用中需要的观看记录、历史确认、外观和数据管理。Lllllvlv 仍以本机使用为中心；媒体服务及其内容不由本项目提供。
 
 ## 功能
 
@@ -27,6 +27,13 @@ Freebo(福瑞播) 的 **Free** 既是免费，也是自由选择播放器。软�
 - 中英双语、浅色与深色外观，记住窗口大小和位置。
 - 关闭主窗口后继续后台播放，通过托盘恢复窗口或退出。
 - Jellyfin 观影统计：在「设置 → 统计」查看观看时长、作品、剧集进度与播放记录，支持本地备份导入导出；详细范围见[开发流程](docs/development.md#jellyfin-观影统计)。
+
+### 本分支的扩展
+
+- Jellyfin 观影统计增加观看确认、刷次修正与历史估算；估算和实际播放时长分开展示，仅 Jellyfin 接入这一统计功能。
+- 可把普通 HTTP(S) 网站作为 Web Service 加入标签页；它只提供网页浏览，不接管播放或同步进度。
+- 增加 Lllllvlv 品牌外观、可选启动视频和 Elysium 视觉主题。源码仓库不含原图；v1.2.1 Windows 发行包包含用户选用的官方公开壁纸，壁纸版权归原作者，不适用本项目 Apache-2.0 代码许可证。
+- Windows 可在诊断页选择用户数据目录；本分支关闭上游自动更新入口。
 
 | 系统    | 播放器                                       |
 | ------- | -------------------------------------------- |
@@ -56,4 +63,4 @@ Cine 仅打开当前视频，播放控制与进度同步的支持范围见 [播�
 
 感谢 [embyToLocalPlayer](https://github.com/kjtsune/embyToLocalPlayer) 提供协议与行为参考。
 
-本项目基于 [Freebo 原项目](https://github.com/elonzh/freebo)，感谢原作者及贡献者。
+Lllllvlv 基于 [Freebo 原项目](https://github.com/elonzh/freebo)，感谢原作者 elonzh 及贡献者。Freebo 的原有署名与 Apache-2.0 条款保留在 [NOTICE](NOTICE) 和 [LICENSE](LICENSE)；本分支的源码修改也按该许可发布。Elysium 壁纸版权归原作者，不受本项目的 Apache-2.0 代码许可覆盖。
