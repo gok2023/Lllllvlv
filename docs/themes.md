@@ -27,7 +27,7 @@ Freebo 自有界面的视觉主题由 `settings.visualTheme` 保存，独立于 
 
 背景预设文件放在 `public/themes/<id>/backgrounds/`，路径在注册表中相对 `index.html` 声明。渲染端只将当前选中的图像 URL 写入 CSS 变量；切换主题时清除该组变量。预设可以设置 `position`、`mask`、`artTint`、`contentTint`、`controlTint`、`foreground`、`mutedForeground`；三类表面的填充、边线、局部模糊和静态纹理由 `.theme-surface-art`、`.theme-surface-content`、`.theme-surface-control` 消费。当前 Elysium 五张画作仅由用户本机提供，保留原始 3840×2160 PNG 细节，Git 忽略原图；Vite 构建仍会复制它们到 `dist/`，未取得分发许可前不得公开分发包含画作的构建产物。资源缺失时主题仍可显示纯色底面，但绘画效果缺失。
 
-Elysium 主窗口在 BrowserShell 的持久背景层绘制当前画作，首页、快速配置、设置与统计共享该层；页面级表面只提供局部染色和可读性。设置侧栏宽度由 `--settings-sidebar-width` 同时控制网格和常驻统计 iframe，默认展开，子路由切换时保持状态。首页欣赏模式是仅覆盖渲染窗口的临时图层，单击或 Esc 退出，不改变路由和原生网页视图几何。独立浮窗只使用主题深色表面，不复制画作。
+Elysium 主窗口在 BrowserShell 的持久背景层绘制当前画作，首页、快速配置、设置与统计共享该层；页面级表面只提供局部染色和可读性。设置布局在整页背景层复用所选画作的横向遮罩，侧栏和内容面板以半透明材质透出连续渐变。设置侧栏宽度由 `--settings-sidebar-width` 同时控制网格和常驻统计 iframe，默认展开，子路由切换时保持状态。首页欣赏模式是仅覆盖渲染窗口的临时图层，单击或 Esc 退出，不改变路由和原生网页视图几何。独立浮窗只使用主题深色表面，不复制画作。
 
 ## 验证边界
 

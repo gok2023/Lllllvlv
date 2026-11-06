@@ -3,7 +3,15 @@ import { useRuntime } from "../../runtime/context";
 import { diagnosticsKey } from "../../runtime/desktop";
 import { useAppTranslation } from "../../i18n";
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, Copy, Download, ExternalLink, FolderOpen, RefreshCw, RotateCcw } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  RefreshCw,
+  RotateCcw,
+} from "lucide-react";
 import { Button } from "../ui/button";
 import { PlayerIcon } from "../shared/IntegrationIcon";
 import { localizeError, type MessageKey } from "../../shared/i18n";
@@ -46,6 +54,9 @@ export function DiagnosticsPanel({ state, run }: { state: AppState; run: RunActi
   const refreshing = query.isFetching;
   const [copied, setCopied] = useState(false);
   const [openingDirectory, setOpeningDirectory] = useState<AppDirectory>();
+  const [migrationTarget, setMigrationTarget] = useState<string | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const [migrationError, setMigrationError] = useState("");
   useEffect(() => {
     if (!copied) return;
     const timer = setTimeout(() => setCopied(false), 3_000);
@@ -100,7 +111,10 @@ export function DiagnosticsPanel({ state, run }: { state: AppState; run: RunActi
             />
             {t("refreshDiagnostics")}
           </Button>
-          <Button variant="ghost" onClick={() => void run("restart", (desktop) => desktop.restartApp())}>
+          <Button
+            variant="ghost"
+            onClick={() => void run("restart", (desktop) => desktop.restartApp())}
+          >
             <RotateCcw size={15} />
             {t("restartApp")}
           </Button>
@@ -122,7 +136,7 @@ export function DiagnosticsPanel({ state, run }: { state: AppState; run: RunActi
               const name = t(target === "program" ? "programDirectory" : "dataDirectory");
               return [
                 name,
-                <div key={target} className="flex items-start gap-3">
+                <div key={target} className="flex flex-wrap items-start gap-3">
                   <span className="min-w-0 flex-1 select-text wrap-anywhere">
                     {data.directories[target]}
                   </span>
@@ -144,10 +158,64 @@ export function DiagnosticsPanel({ state, run }: { state: AppState; run: RunActi
                     <FolderOpen size={15} />
                     {t("open")}
                   </Button>
+                  {target === "data" && data.dataMigration?.available && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={migrationBusy}
+                      onClick={async () => {
+                        setMigrationError("");
+                        setMigrationBusy(true);
+                        try {
+                          const selected = await runtime.api.chooseDataDirectory();
+                          if (selected) setMigrationTarget(selected);
+                        } catch (error) {
+                          setMigrationError(localizeError(state.locale, error));
+                        } finally {
+                          setMigrationBusy(false);
+                        }
+                      }}
+                    >
+                      {t("migrateDataDirectory")}
+                    </Button>
+                  )}
                 </div>,
               ];
             })}
           />
+          {migrationTarget && (
+            <div className="mt-3 space-y-3 rounded-lg border p-4 text-sm">
+              <p className="wrap-anywhere">{t("migrationTarget", { path: migrationTarget })}</p>
+              <div className="flex gap-2">
+                <Button
+                  disabled={migrationBusy}
+                  onClick={async () => {
+                    setMigrationBusy(true);
+                    try {
+                      await runtime.api.migrateDataDirectory(migrationTarget);
+                    } catch (error) {
+                      setMigrationError(localizeError(state.locale, error));
+                      setMigrationBusy(false);
+                    }
+                  }}
+                >
+                  {t("migrationRestartNow")}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={migrationBusy}
+                  onClick={() => setMigrationTarget(null)}
+                >
+                  {t("migrationCancel")}
+                </Button>
+              </div>
+            </div>
+          )}
+          {(migrationError || data.dataMigration?.error) && (
+            <p className="mt-3 text-sm text-destructive" role="alert">
+              {migrationError || t("migrationError", { reason: data.dataMigration?.error ?? "" })}
+            </p>
+          )}
         </section>
       )}
       <section aria-label={t("connectionInfo")}>

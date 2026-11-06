@@ -301,6 +301,8 @@ export interface DesktopAPI {
   getStartupVideo(this: void): Promise<string | null>;
   finishStartupVideo(this: void): Promise<void>;
   restartApp(this: void): Promise<void>;
+  chooseDataDirectory(this: void): Promise<string | null>;
+  migrateDataDirectory(this: void, target: string): Promise<void>;
   saveCustomPlayer(this: void, player: CustomPlayerInput): Promise<AppState>;
   updateSettings(
     this: void,
@@ -332,7 +334,12 @@ export interface DesktopAPI {
   resetSession(this: void, id: string): Promise<AppState>;
   openGuide(this: void, kind: PlayerKind): Promise<void>;
   exportDiagnostics(this: void): Promise<string | null>;
-  getDiagnostics(this: void): Promise<Diagnostics & { directories: AppDirectories }>;
+  getDiagnostics(this: void): Promise<
+    Diagnostics & {
+      directories: AppDirectories;
+      dataMigration?: { available: boolean; error?: string };
+    }
+  >;
   openDirectory(this: void, target: AppDirectory): Promise<void>;
   copyDiagnostics(this: void): Promise<void>;
   openLink(this: void, target: "product" | "github" | "issue"): Promise<void>;

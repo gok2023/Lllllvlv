@@ -324,7 +324,7 @@ export function BrowserShell() {
             {page === "library" ? (
               <Globe2 size={15} />
             ) : (
-              <img src="./icon.svg" width={16} height={16} alt="" />
+              <img src="./icon.png" width={16} height={16} alt="" />
             )}
             <Input readOnly aria-label={t("address")} value={locationText} spellCheck={false} />
             {page === "library" && (

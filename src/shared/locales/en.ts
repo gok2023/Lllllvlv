@@ -134,6 +134,13 @@ export const en = {
   directories: "Directories",
   programDirectory: "Program directory",
   dataDirectory: "Data directory",
+  migrateDataDirectory: "Move data directory",
+  migrationTarget:
+    "All data will be copied to: {{path}}. The original directory will be kept. Confirming closes the app and restarts it after the copy.",
+  migrationRestartNow: "Confirm and restart now",
+  migrationCancel: "Cancel",
+  migrationError:
+    "The previous move failed. The original data directory is still in use: {{reason}}",
   openDirectory: "Open {{name}}",
   directoryOpenFailed:
     "Cannot open this directory. Check that it exists and you have permission to access it.",

@@ -1,14 +1,14 @@
 {
   "name": "freebo",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "A free, open-source desktop media client. Choose your local player, without subscriptions or format unlock fees.",
-  "homepage": "https://elonzh.cn/toys/freebo",
+  "homepage": "https://github.com/gok2023/Lllllvlv",
   "license": "Apache-2.0",
   "author": "elonzh",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elonzh/freebo.git"
+    "url": "https://github.com/gok2023/Lllllvlv.git"
   },
   "type": "module",
   "main": "dist-electron/main.cjs",
@@ -130,8 +130,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "elonzh",
-        "repo": "freebo",
+        "owner": "gok2023",
+        "repo": "Lllllvlv",
         "releaseType": "release"
       }
     ],

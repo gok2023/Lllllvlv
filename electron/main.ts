@@ -83,6 +83,7 @@ import { CredentialStore, credentialsSchema, credentialOriginMatches } from "./c
 import { loadFavicon } from "./core/favicon";
 import { diagnosticSnapshot, productLink } from "./core/diagnostics";
 import { applicationDirectories, openApplicationDirectory } from "./core/app-directories";
+import { UserDataLocation } from "./core/user-data-location";
 import { AppLifecycle } from "./core/app-lifecycle";
 import { UpdateManager, hasMacUpdateSignature, updateDisabledReason } from "./core/updates";
 import { autoUpdater } from "electron-updater";
@@ -98,10 +99,22 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.setName("Lllllvlv");
-const userDataPath =
-  !app.isPackaged && process.env.FREEBO_USER_DATA_DIR
-    ? process.env.FREEBO_USER_DATA_DIR
-    : join(app.getPath("appData"), "Freebo");
+const isolatedUserData = !app.isPackaged && !!process.env.FREEBO_USER_DATA_DIR;
+const userDataLocation = new UserDataLocation(
+  app.getPath("appData"),
+  join(app.getPath("appData"), "Freebo"),
+);
+let userDataPath: string;
+try {
+  userDataPath = isolatedUserData
+    ? process.env.FREEBO_USER_DATA_DIR!
+    : process.platform === "win32"
+      ? userDataLocation.resolve()
+      : join(app.getPath("appData"), "Freebo");
+} catch (error) {
+  dialog.showErrorBox("Freebo 数据目录不可访问", String(error));
+  process.exit(1);
+}
 mkdirSync(userDataPath, { recursive: true });
 app.setPath("userData", userDataPath);
 const instance = new SingleInstance(app, showMainWindow);
@@ -1033,19 +1046,6 @@ function setupIPC() {
     return snapshot;
   });
   handle("app:watch-statistics-status", () => watchStatus());
-  handle("app:watch-statistics-path-status", () => {
-    const server = watchServer();
-    return watchPathLocator.status(server.id, server.url);
-  });
-  handle("app:watch-statistics-path-choose", async () => {
-    const server = watchServer();
-    const chosen = await dialog.showOpenDialog(window!, {
-      properties: ["openFile"],
-      filters: [{ name: "Playback Reporting 数据库", extensions: ["db"] }],
-    });
-    if (chosen.canceled || !chosen.filePaths[0]) return null;
-    await watchPathLocator.setManual(server.id, server.url, chosen.filePaths[0]);
-    return watchPathLocator.status(server.id, server.url);
   const batchReviewSchema = z.object({
     action: z.literal("batch"),
     itemIds: z.array(z.string().min(1)).min(1),
@@ -1087,6 +1087,19 @@ function setupIPC() {
     if (snapshot) await publishWatch(snapshot, userId);
     return snapshot;
   });
+  handle("app:watch-statistics-path-status", () => {
+    const server = watchServer();
+    return watchPathLocator.status(server.id, server.url);
+  });
+  handle("app:watch-statistics-path-choose", async () => {
+    const server = watchServer();
+    const chosen = await dialog.showOpenDialog(window!, {
+      properties: ["openFile"],
+      filters: [{ name: "Playback Reporting 数据库", extensions: ["db"] }],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return null;
+    await watchPathLocator.setManual(server.id, server.url, chosen.filePaths[0]);
+    return watchPathLocator.status(server.id, server.url);
   });
   handle("app:watch-statistics-path-discover", async () => {
     const server = watchServer();
@@ -1564,7 +1577,26 @@ function setupIPC() {
   handle("app:get-diagnostics", () => ({
     ...getDiagnostics(),
     directories: applicationDirectories(app),
+    dataMigration: {
+      available: process.platform === "win32" && !isolatedUserData,
+      error: userDataLocation.error,
+    },
   }));
+  handle("app:choose-data-directory", async () => {
+    if (process.platform !== "win32" || isolatedUserData)
+      throw new Error("此运行环境不支持迁移数据目录");
+    const chosen = await dialog.showOpenDialog(window!, { properties: ["openDirectory"] });
+    if (chosen.canceled || !chosen.filePaths[0]) return null;
+    return userDataLocation.targetFor(chosen.filePaths[0], userDataPath);
+  });
+  handle("app:migrate-data-directory", async (target) => {
+    if (process.platform !== "win32" || isolatedUserData || typeof target !== "string")
+      throw new Error("此运行环境不支持迁移数据目录");
+    userDataLocation.prepare(userDataPath, target);
+    await lifecycle.prepareToQuit();
+    app.relaunch();
+    app.quit();
+  });
   handle("app:open-directory", (input) =>
     openApplicationDirectory(app, input, (path) => shell.openPath(path)),
   );

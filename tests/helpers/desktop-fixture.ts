@@ -49,6 +49,8 @@ export function createDesktopFixture() {
   }
   const api: DesktopAPI = {
     getWatchStatistics: vi.fn(async () => null),
+    chooseDataDirectory: vi.fn(async () => null),
+    migrateDataDirectory: vi.fn(async () => {}),
     correctWatchLibrary: vi.fn(async () => {
       throw new Error("No statistics fixture");
     }),
