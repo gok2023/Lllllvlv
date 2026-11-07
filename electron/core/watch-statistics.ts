@@ -3,6 +3,12 @@ import { constants as fsConstants } from "node:fs";
 import { join, dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { WatchStatisticsPathLocator } from "./watch-statistics-path";
+import {
+  parsePlaybackActivityResponse,
+  playbackActivityLocalQuery,
+  playbackActivityQuery,
+  type PlaybackActivity,
+} from "./watch-statistics-playback-reporting";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type {
@@ -40,17 +46,6 @@ type RawItem = {
   };
   ProviderIds?: Record<string, string>;
 };
-type RawActivity = {
-  DateCreated: string;
-  UserId: string;
-  ItemId: string;
-  ItemType: string;
-  ItemName: string;
-  PlayDuration: number;
-  ClientName?: string;
-  DeviceName?: string;
-  PlaybackMethod?: string;
-};
 const defaults: WatchStatisticsSettings = {
   gapMinutes: 15,
   includeBackfill: true,
@@ -60,8 +55,8 @@ const defaults: WatchStatisticsSettings = {
 const seconds = (ticks?: number) => (ticks && ticks > 0 ? ticks / 10_000_000 : undefined);
 const itemId = (value: string) => value.replace(/-/g, "").toLowerCase();
 const reportDate = (value: string) => {
-  // Playback Reporting stores DateTime.Now without an offset. Interpret it in the
-  // Jellyfin host's local timezone (the local-server fallback uses this host).
+  // Playback Reporting stores DateTime.Now without an offset. JavaScript interprets
+  // it in the Freebo client's local timezone, including for remote servers.
   const timestamp = value.replace(" ", "T");
   const parsed = new Date(timestamp);
   if (Number.isNaN(parsed.getTime())) throw new Error("播放记录日期无效");
@@ -171,12 +166,14 @@ function planBatch(snapshot: WatchStatisticsSnapshot, input: WatchBatchReviewInp
     if (!item || !["Movie", "Episode"].includes(item.type)) throw new Error("作品不存在");
     const existing = confirmations.filter((entry) => entry.itemId === id);
     const beforeCount = existing.length;
-    const legacyEstimate = snapshot.backfill.find((entry) => entry.itemId === id && entry.durationSec > 0);
-    const beforeEstimate = (legacyEstimate?.durationSec ?? 0) + existing.reduce(
-      (sum, entry) => sum + (entry.estimatedDurationSec ?? 0),
-      0,
+    const legacyEstimate = snapshot.backfill.find(
+      (entry) => entry.itemId === id && entry.durationSec > 0,
     );
-    const estimatedBeforeCount = Number(Boolean(legacyEstimate)) +
+    const beforeEstimate =
+      (legacyEstimate?.durationSec ?? 0) +
+      existing.reduce((sum, entry) => sum + (entry.estimatedDurationSec ?? 0), 0);
+    const estimatedBeforeCount =
+      Number(Boolean(legacyEstimate)) +
       existing.filter((entry) => entry.estimatedDurationSec !== undefined).length;
     if (input.mode === "estimate") {
       for (const entry of existing.filter((entry) => entry.source === "manual"))
@@ -214,11 +211,11 @@ function planBatch(snapshot: WatchStatisticsSnapshot, input: WatchBatchReviewInp
         });
     }
     const after = confirmations.filter((entry) => entry.itemId === id);
-    const estimateAfterSec = (legacyEstimate?.durationSec ?? 0) + after.reduce(
-      (sum, entry) => sum + (entry.estimatedDurationSec ?? 0),
-      0,
-    );
-    const estimatedAfterCount = Number(Boolean(legacyEstimate)) +
+    const estimateAfterSec =
+      (legacyEstimate?.durationSec ?? 0) +
+      after.reduce((sum, entry) => sum + (entry.estimatedDurationSec ?? 0), 0);
+    const estimatedAfterCount =
+      Number(Boolean(legacyEstimate)) +
       after.filter((entry) => entry.estimatedDurationSec !== undefined).length;
     items.push({
       itemId: id,
@@ -841,61 +838,68 @@ export class WatchStatisticsStore {
       };
     };
     const media: WatchMedia[] = raw.map(convertMedia);
-    let activities: RawActivity[];
+    let activities: PlaybackActivity[];
     try {
       const overlap =
         previous?.cursor && !fullScan
           ? new Date(Date.parse(previous.cursor) - 7 * 86400000)
           : undefined;
       const since = overlap
-        ? ` AND DateCreated >= '${overlap.getFullYear()}-${String(overlap.getMonth() + 1).padStart(2, "0")}-${String(overlap.getDate()).padStart(2, "0")} ${String(overlap.getHours()).padStart(2, "0")}:${String(overlap.getMinutes()).padStart(2, "0")}:${String(overlap.getSeconds()).padStart(2, "0")}'`
-        : "";
-      const query = `SELECT CAST(DateCreated AS TEXT) AS DateCreated, UserId, ItemId, ItemType, ItemName, PlayDuration, ClientName, DeviceName, PlaybackMethod FROM PlaybackActivity WHERE lower(replace(UserId, '-', '')) = '${reportUserId}'${since} ORDER BY DateCreated DESC`;
-      const result = await request<{ colums?: string[]; results?: unknown[][]; message?: string }>(
-        "user_usage_stats/submit_custom_query",
-        { CustomQueryString: query, ReplaceUserId: false },
-      );
-      if (/^Query executed, no data returned/i.test(result.message ?? "")) activities = [];
-      else if (
-        !result.colums ||
-        !result.results ||
-        (result.message && !/^Query executed/i.test(result.message))
-      )
-        throw new Error("查询结果无效");
-      else
-        activities = result.results.map(
-          (row) =>
-            Object.fromEntries(
-              result.colums!.map((column, index) => [column, row[index]]),
-            ) as RawActivity,
-        );
+        ? `${overlap.getFullYear()}-${String(overlap.getMonth() + 1).padStart(2, "0")}-${String(overlap.getDate()).padStart(2, "0")} ${String(overlap.getHours()).padStart(2, "0")}:${String(overlap.getMinutes()).padStart(2, "0")}:${String(overlap.getSeconds()).padStart(2, "0")}`
+        : undefined;
+      const result = await request<unknown>("user_usage_stats/submit_custom_query", {
+        CustomQueryString: playbackActivityQuery(reportUserId, since),
+        ReplaceUserId: false,
+      });
+      activities = parsePlaybackActivityResponse(result);
       this.pathLocator.markApiSuccess(serverId, base);
-    } catch {
-      const info = await request<{ ProgramDataPath?: string }>("System/Info").catch(
-        () => ({}) as { ProgramDataPath?: string },
-      );
-      const databasePath = await this.pathLocator.discover(
-        serverId,
-        base,
-        false,
-        info.ProgramDataPath,
-      );
-      const db = new DatabaseSync(databasePath, { readOnly: true });
+    } catch (httpError) {
       try {
-        const overlap =
-          previous?.cursor && !fullScan
-            ? new Date(Date.parse(previous.cursor) - 7 * 86400000)
+        const info = await request<{ ProgramDataPath?: string }>("System/Info").catch(
+          () => ({}) as { ProgramDataPath?: string },
+        );
+        const databasePath = await this.pathLocator.discover(
+          serverId,
+          base,
+          false,
+          info.ProgramDataPath,
+        );
+        const db = new DatabaseSync(databasePath, { readOnly: true });
+        try {
+          const overlap =
+            previous?.cursor && !fullScan
+              ? new Date(Date.parse(previous.cursor) - 7 * 86400000)
+              : undefined;
+          const since = overlap
+            ? `${overlap.getFullYear()}-${String(overlap.getMonth() + 1).padStart(2, "0")}-${String(overlap.getDate()).padStart(2, "0")} ${String(overlap.getHours()).padStart(2, "0")}:${String(overlap.getMinutes()).padStart(2, "0")}:${String(overlap.getSeconds()).padStart(2, "0")}`
             : undefined;
-        const since = overlap
-          ? `${overlap.getFullYear()}-${String(overlap.getMonth() + 1).padStart(2, "0")}-${String(overlap.getDate()).padStart(2, "0")} ${String(overlap.getHours()).padStart(2, "0")}:${String(overlap.getMinutes()).padStart(2, "0")}:${String(overlap.getSeconds()).padStart(2, "0")}`
-          : undefined;
-        activities = db
-          .prepare(
-            `SELECT CAST(DateCreated AS TEXT) AS DateCreated, UserId, ItemId, ItemType, ItemName, PlayDuration, ClientName, DeviceName, PlaybackMethod FROM PlaybackActivity WHERE lower(replace(UserId, '-', '')) = ?${since ? " AND DateCreated >= ?" : ""} ORDER BY DateCreated DESC`,
+          activities = db
+            .prepare(playbackActivityLocalQuery(since))
+            .all(
+              ...(since ? [reportUserId, since] : [reportUserId]),
+            ) as unknown as PlaybackActivity[];
+        } finally {
+          db.close();
+        }
+      } catch (fallbackError) {
+        const reason =
+          httpError instanceof Error ? httpError.message : "Playback Reporting 接口失败";
+        const safeReason =
+          /^(Playback Reporting (?:请求失败 \(\d{3}\)|请求超时|请求失败，请检查服务连接|响应结构无效|响应消息无效|查询失败|响应列无效|响应行无效|播放记录字段无效))$/.test(
+            reason,
           )
-          .all(...(since ? [reportUserId, since] : [reportUserId])) as unknown as RawActivity[];
-      } finally {
-        db.close();
+            ? reason
+            : "Playback Reporting 接口失败";
+        const fallbackReason = fallbackError instanceof Error ? fallbackError.message : "";
+        const safeFallbackReason = [
+          "Playback Reporting 接口不可用；远程服务器不能读取本机数据库",
+          "本机数据库自动定位目前仅支持 Windows",
+          "无法核实当前端口对应的本机 Jellyfin 进程，请手动选择 Playback Reporting 数据库或检查服务连接",
+          "无法自动定位 Playback Reporting 数据库，请手动选择数据库文件",
+        ].includes(fallbackReason)
+          ? fallbackReason
+          : "本机数据库回退失败";
+        throw new Error(`${safeReason}；${safeFallbackReason}`);
       }
     }
     const current: WatchRecord[] = activities

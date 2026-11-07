@@ -52,7 +52,7 @@ IPC 与自定义命令行可同时使用：命令行负责启动与用户选项�
 
 播放记录表的媒体库标签可点击修改单次记录的归属。勾选“记住这部作品”会将相同 Jellyfin ItemId 的后续记录归入所选媒体库；“清除修正”清除该次记录的修正，勾选记住时也清除该作品规则。合并活动中每次播放有独立标签。可选媒体库取自最近一次同步的 Jellyfin 媒体库目录，新增媒体库后先重新同步。历史补录没有独立播放记录，只应用作品规则。
 
-插件接口不可用时，仅 Windows 上的本机 Jellyfin 可尝试读取 Playback Reporting 数据库；自动定位失败可手动选择 `playback_reporting.db`。远程 Jellyfin 无法使用本机数据库回退。统计结果按服务和用户保存在 Freebo 用户数据目录中。当前只接入 Jellyfin，真实服务器的插件版本、数据库路径与跨设备导入仍需在目标环境验收。
+插件接口不可用时，仅 Windows 上的本机 Jellyfin 可尝试读取 Playback Reporting 数据库；自动定位失败可手动选择 `playback_reporting.db`。远程 Jellyfin 无法使用本机数据库回退。统计结果按服务和用户保存在 Freebo 用户数据目录中。升级、数据核对与故障排查见 [观影统计专题](watch-statistics.md#升级与排查)。
 
 ## 检查与提交
 

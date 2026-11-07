@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { networkInterfaces, hostname } from "node:os";
+import { hasPlaybackActivityColumns } from "./watch-statistics-playback-reporting";
 
 const run = promisify(execFile);
 type SavedPath = { serverId: string; origin: string; path: string; manual: boolean };
@@ -67,7 +68,7 @@ export class WatchStatisticsPathLocator {
     try {
       const columns = db.prepare("PRAGMA table_info(PlaybackActivity)").all() as { name: string }[];
       const names = new Set(columns.map((column) => column.name));
-      if (!["DateCreated", "UserId", "ItemId", "PlayDuration"].every((name) => names.has(name)))
+      if (!hasPlaybackActivityColumns(names))
         throw new Error("所选文件不是有效的 Playback Reporting 数据库");
     } finally {
       db.close();
