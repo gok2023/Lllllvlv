@@ -112,7 +112,7 @@ try {
       ? userDataLocation.resolve()
       : join(app.getPath("appData"), "Freebo");
 } catch (error) {
-  dialog.showErrorBox("Freebo 数据目录不可访问", String(error));
+  dialog.showErrorBox("Lllllvlv 数据目录不可访问", String(error));
   process.exit(1);
 }
 mkdirSync(userDataPath, { recursive: true });
@@ -1568,7 +1568,7 @@ function setupIPC() {
   });
   handle("app:diagnostics", async () => {
     const result = await dialog.showSaveDialog(window, {
-      defaultPath: "freebo-diagnostics.json",
+      defaultPath: "Lllllvlv-diagnostics.json",
     });
     if (result.canceled || !result.filePath) return null;
     await writeFile(result.filePath, JSON.stringify(getDiagnostics(), null, 2));
@@ -1988,7 +1988,7 @@ async function setupUpdates() {
   ipcMain.handle("app:open-releases", (event) => {
     own(event);
     if (reason === "fork-disabled") return;
-    return shell.openExternal("https://github.com/elonzh/freebo/releases/latest");
+    return shell.openExternal("https://github.com/gok2023/Lllllvlv/releases/latest");
   });
   buildTrayMenu();
   publish();

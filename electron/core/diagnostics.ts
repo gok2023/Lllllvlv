@@ -48,9 +48,9 @@ export function productLink(
     "version" | "platform" | "arch" | "osRelease" | "electron" | "chromium"
   >,
 ): string {
-  if (target === "product") return "https://elonzh.cn/toys/freebo";
-  if (target === "github") return "https://github.com/elonzh/freebo";
-  const url = new URL("https://github.com/elonzh/freebo/issues/new");
+  if (target === "product") return "https://github.com/gok2023/Lllllvlv";
+  if (target === "github") return "https://github.com/gok2023/Lllllvlv";
+  const url = new URL("https://github.com/gok2023/Lllllvlv/issues/new");
   url.searchParams.set("title", "[Bug] ");
   url.searchParams.set(
     "body",

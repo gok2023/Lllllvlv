@@ -65,10 +65,10 @@ describe("diagnostic information and feedback links", () => {
   });
   it("opens fixed HTTPS destinations and only prefills environment information in an issue", () => {
     const diagnostic = diagnosticSnapshot(state, runtime, []);
-    expect(productLink("product", diagnostic)).toBe("https://elonzh.cn/toys/freebo");
-    expect(productLink("github", diagnostic)).toBe("https://github.com/elonzh/freebo");
+    expect(productLink("product", diagnostic)).toBe("https://github.com/gok2023/Lllllvlv");
+    expect(productLink("github", diagnostic)).toBe("https://github.com/gok2023/Lllllvlv");
     const issue = new URL(productLink("issue", diagnostic));
-    expect(issue.origin + issue.pathname).toBe("https://github.com/elonzh/freebo/issues/new");
+    expect(issue.origin + issue.pathname).toBe("https://github.com/gok2023/Lllllvlv/issues/new");
     expect(issue.searchParams.get("body")).toContain("Lllllvlv 0.1.0");
     expect(issue.toString()).not.toContain("private.example.test");
   });

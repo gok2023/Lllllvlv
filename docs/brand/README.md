@@ -1,8 +1,10 @@
-# Freebo 品牌规范与素材
+# Lllllvlv 当前品牌与 Freebo 上游素材记录
 
-本文件是已选品牌的使用和复现依据。Freebo 使用友好的导盲犬标识与真实 Atma SemiBold 字标；应用设计系统见 [界面设计](../design.md)。正式素材位于 `assets/brand/freebo/`。
+当前应用名称统一写作 **Lllllvlv**。运行图标由 [个人品牌图标](../../assets/personal/app-icon.png) 提供，打包与界面使用 `resources/icon.*`、`public/icon.png`；界面文字由 [Brand.tsx](../../src/components/shared/Brand.tsx) 呈现。
 
-![Freebo](../../assets/brand/freebo/svg/logo.svg)
+以下内容记录上游 Freebo 的历史品牌素材及许可，不是当前 Lllllvlv 标志或图标的使用规范。`assets/brand/freebo/` 与 `docs/brand/brand-kit/` 保留作为上游来源和复现资料。
+
+Freebo 使用友好的导盲犬标识与真实 Atma SemiBold 字标；原界面设计记录见 [界面设计](../design.md)。历史素材位于 `assets/brand/freebo/`。
 
 ## 名称、字体与颜色
 

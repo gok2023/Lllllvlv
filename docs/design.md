@@ -1,5 +1,5 @@
 ---
-name: Freebo
+name: Lllllvlv
 description: A friendly guide dog for Emby browsing and local playback, within a familiar desktop browser shell.
 colors:
   pine: "#193c35"
@@ -175,9 +175,9 @@ components:
     width: "32px"
 ---
 
-# Design System: Freebo
+# Design System: Lllllvlv
 
-本文记录默认 Original 界面的设计规范。可选 Elysium 的画作首页与材质系统见 [Elysium 设计](elysium.md)；主题扩展契约见 [视觉主题](themes.md)。
+本文记录默认 Original 界面的设计规范。下方涉及 Freebo 导盲犬标志、字标及品牌套件的说明是上游历史设计，不适用于当前 Lllllvlv 图标；当前品牌入口见 [品牌说明](brand/README.md)。可选 Elysium 的画作首页与材质系统见 [Elysium 设计](elysium.md)；主题扩展契约见 [视觉主题](themes.md)。
 
 ## Overview
 

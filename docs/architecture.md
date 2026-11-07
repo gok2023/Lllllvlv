@@ -34,7 +34,7 @@ React 提供 Freebo 自身的界面，服务器网页由独立的 `WebContentsVi
 
 集成图标位于 `public/integrations/servers/` 和 `public/integrations/players/`，来源见 [集成图标](integration-icons.md)。应用截图与品牌配图分别放在 `docs/assets/app/` 和 `docs/assets/brand/`。
 
-品牌主稿与生成素材保留在 `assets/brand/freebo/`，`public/` 与 `resources/` 保存渲染和原生打包所需的运行副本，生成规则见 [品牌规范](brand/README.md)。相关生成与验证脚本集中于 `scripts/brand/`；媒体服务器诊断工具位于 `scripts/diagnostics/`，集成测试工具位于 `scripts/integration/`。开发、构建与联调的命令入口保留在 `scripts/` 根目录。
+当前 Lllllvlv 图标来源见 `assets/personal/app-icon.png`，`public/` 与 `resources/` 保存渲染和原生打包所需的运行副本；`assets/brand/freebo/` 保留上游历史素材，边界见 [品牌说明](brand/README.md)。相关生成与验证脚本集中于 `scripts/brand/`；媒体服务器诊断工具位于 `scripts/diagnostics/`，集成测试工具位于 `scripts/integration/`。开发、构建与联调的命令入口保留在 `scripts/` 根目录。
 
 ## 状态与导航
 
