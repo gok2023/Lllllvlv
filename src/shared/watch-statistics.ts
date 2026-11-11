@@ -37,7 +37,7 @@ export interface WatchBackfill {
   itemId: string;
   durationSec: number;
   watchedAt?: string;
-  /** Records already known when this estimate was created are covered by it. */
+  /** Records already known when this estimate was created remain separate actual minutes. */
   baselineRecordIds?: string[];
   baselineAt?: string;
 }

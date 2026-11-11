@@ -655,7 +655,12 @@ export class WatchStatisticsStore {
         } else if (input.action === "revoke") {
           const index = confirmations.findIndex((item) => item.id === input.confirmationId);
           if (index < 0) throw new Error("观看确认不存在");
-          confirmations.splice(index, 1);
+          const [revoked] = confirmations.splice(index, 1);
+          if (
+            !confirmations.some((entry) => entry.itemId === revoked.itemId) &&
+            !candidates.some((entry) => entry.itemId === revoked.itemId)
+          )
+            candidates.push({ itemId: revoked.itemId, evidenceIds: [], status: "ignored" });
         } else {
           for (const id of input.itemIds) {
             const item = media.get(id);
@@ -684,6 +689,11 @@ export class WatchStatisticsStore {
                   evidenceIds: [],
                   estimatedDurationSec: input.estimate ? item.runtimeSec : undefined,
                 });
+              if (
+                input.totalCount === 0 &&
+                !candidates.some((entry) => entry.itemId === id)
+              )
+                candidates.push({ itemId: id, evidenceIds: [], status: "ignored" });
             } else if (input.action === "confirm" || input.action === "confirmDirect") {
               confirmations.push({
                 id: randomUUID(),
@@ -1111,9 +1121,6 @@ export class WatchStatisticsStore {
     const records = [...merged.values()].sort(
       (a, b) => Date.parse(b.startAt) - Date.parse(a.startAt),
     );
-    const playedIds = new Set(
-      records.map((record) => canonical.get(record.itemId) ?? record.itemId),
-    );
     const priorBackfill = (previous?.backfill ?? []).map((item) => ({
       ...item,
       itemId: remap.get(item.itemId) ?? item.itemId,
@@ -1128,19 +1135,6 @@ export class WatchStatisticsStore {
       backfill.push(item);
     };
     for (const item of priorBackfill) addBackfill(item);
-    for (const item of previous ? [] : resolvedMedia)
-      if (
-        (item.type === "Movie" || item.type === "Episode") &&
-        item.played &&
-        item.runtimeSec &&
-        !playedIds.has(canonical.get(item.id) ?? item.id)
-      )
-        addBackfill({
-          itemId: item.id,
-          durationSec: item.runtimeSec,
-          baselineRecordIds: [],
-          baselineAt: new Date().toISOString(),
-        });
     const confirmations: WatchConfirmation[] = (previous?.confirmations ?? []).map((entry) => ({
       ...entry,
       itemId: remap.get(entry.itemId) ?? entry.itemId,
@@ -1150,67 +1144,43 @@ export class WatchStatisticsStore {
       itemId: remap.get(entry.itemId) ?? entry.itemId,
     }));
     const knownRecords = new Set(previous?.records.map((entry) => entry.id) ?? []);
-    const initial = !previous?.confirmations;
-    const initialBaseline = previous?.confirmations?.find(
-      (entry) => entry.source === "initial",
-    )?.baselineAt;
-    const beforeInitialBaseline = (item: WatchMedia) =>
-      !!initialBaseline &&
-      !!item.lastPlayedAt &&
-      Number.isFinite(Date.parse(item.lastPlayedAt)) &&
-      Date.parse(item.lastPlayedAt) <= Date.parse(initialBaseline);
-    // An incomplete first media scan can discover already-played items later.
-    // Only a pre-baseline LastPlayedDate with no later playback evidence proves
-    // that their first watch belongs to the original library state.
-    const historical = (item: WatchMedia, evidenceIds: string[]) =>
-      item.played &&
-      beforeInitialBaseline(item) &&
-      evidenceIds.length === 0 &&
-      !records.some(
-        (record) =>
-          record.itemId === item.id && Date.parse(record.startAt) > Date.parse(initialBaseline!),
-      );
-    const historicalCandidates = candidates.filter((candidate) => {
-      const item = mediaById.get(candidate.itemId);
-      return (
-        item &&
-        (candidate.status === "pending" || candidate.status === "later") &&
-        !confirmations.some((entry) => entry.itemId === candidate.itemId) &&
-        historical(item, candidate.evidenceIds)
-      );
-    });
-    if (historicalCandidates.length) {
-      for (const candidate of historicalCandidates) {
-        confirmations.push({
-          id: randomUUID(),
-          itemId: candidate.itemId,
-          source: "initial",
-          evidenceIds: [],
-          baselineAt: initialBaseline,
-        });
-        candidates.splice(candidates.indexOf(candidate), 1);
-      }
-    }
+    const baselineNow = new Date().toISOString();
     for (const item of resolvedMedia) {
       if (item.type !== "Movie" && item.type !== "Episode") continue;
       if (confirmations.some((entry) => entry.itemId === item.id)) continue;
+      if (!item.played) continue;
+      // The old transition path alone created an empty pending first candidate.
+      // A reviewed or evidence-bearing candidate has no reliable provenance.
+      const existingCandidate = candidates.find((entry) => entry.itemId === item.id);
+      if (existingCandidate) {
+        if (existingCandidate.status !== "pending" || existingCandidate.evidenceIds.length) continue;
+        candidates.splice(candidates.indexOf(existingCandidate), 1);
+      }
+      const itemRecords = records.filter(
+        (entry) => entry.itemId === item.id && entry.durationSec > 0,
+      );
+      confirmations.push({
+        id: randomUUID(),
+        itemId: item.id,
+        source: "initial",
+        evidenceIds: itemRecords.map((entry) => entry.id),
+        baselineAt: baselineNow,
+      });
+      // A complete recorded watch already accounts for the first viewing.
+      // Short playback is separate evidence and does not erase the older watch
+      // represented by Played; retain its minutes alongside one full estimate.
+      const recordedSeconds = itemRecords.reduce((sum, entry) => sum + entry.durationSec, 0);
       if (
-        (initial && item.played) ||
-        (historical(item, []) && !previous?.media.some((entry) => entry.id === item.id))
+        item.runtimeSec &&
+        recordedSeconds < item.runtimeSec * 0.9 &&
+        !backfillKeys.has(canonical.get(item.id) ?? item.id)
       )
-        confirmations.push({
-          id: randomUUID(),
+        addBackfill({
           itemId: item.id,
-          source: "initial",
-          evidenceIds: records.filter((entry) => entry.itemId === item.id).map((entry) => entry.id),
-          baselineAt: initialBaseline ?? previous?.refreshedAt ?? new Date().toISOString(),
+          durationSec: item.runtimeSec,
+          baselineRecordIds: itemRecords.map((entry) => entry.id),
+          baselineAt: baselineNow,
         });
-      else if (
-        item.played &&
-        !previous?.media.some((entry) => entry.id === item.id && entry.played) &&
-        !candidates.some((entry) => entry.itemId === item.id)
-      )
-        candidates.push({ itemId: item.id, evidenceIds: [], status: "pending" });
     }
     for (const item of resolvedMedia) {
       if (item.type !== "Movie" && item.type !== "Episode") continue;
@@ -1227,8 +1197,7 @@ export class WatchStatisticsStore {
                 .filter(
                   (entry) =>
                     entry.itemId === item.id &&
-                    !knownRecords.has(entry.id) &&
-                    (!initialBaseline || Date.parse(entry.startAt) > Date.parse(initialBaseline)),
+                    !knownRecords.has(entry.id),
                 )
                 .map((entry) => entry.id),
             ]),
