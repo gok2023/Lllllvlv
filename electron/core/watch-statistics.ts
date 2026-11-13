@@ -689,10 +689,7 @@ export class WatchStatisticsStore {
                   evidenceIds: [],
                   estimatedDurationSec: input.estimate ? item.runtimeSec : undefined,
                 });
-              if (
-                input.totalCount === 0 &&
-                !candidates.some((entry) => entry.itemId === id)
-              )
+              if (input.totalCount === 0 && !candidates.some((entry) => entry.itemId === id))
                 candidates.push({ itemId: id, evidenceIds: [], status: "ignored" });
             } else if (input.action === "confirm" || input.action === "confirmDirect") {
               confirmations.push({
@@ -955,10 +952,17 @@ export class WatchStatisticsStore {
             EnableImages: "false",
             Limit: "100",
           });
-          const page = await request<{ Items: RawItem[] }>(
-            `Users/${encodeURIComponent(auth.userId)}/Items?${params}`,
-          ).catch(() => null);
-          found.push(...(page?.Items ?? []));
+          try {
+            const page = await request<{ Items: RawItem[] }>(
+              `Users/${encodeURIComponent(auth.userId)}/Items?${params}`,
+            );
+            if (!Array.isArray(page?.Items)) throw new Error("Jellyfin 媒体响应缺少 Items");
+            found.push(...page.Items);
+          } catch (error) {
+            if (requested.length === 1 && error instanceof Error && /\(404\)$/.test(error.message))
+              continue;
+            throw error;
+          }
         }
         return found;
       };
@@ -1006,8 +1010,8 @@ export class WatchStatisticsStore {
           params.set("StartIndex", String(offset));
           const page = await request<{ Items: RawItem[]; TotalRecordCount?: number }>(
             `Users/${encodeURIComponent(auth.userId)}/Items?${params}`,
-          ).catch(() => null);
-          if (!page) break;
+          );
+          if (!Array.isArray(page?.Items)) throw new Error("Jellyfin 媒体响应缺少 Items");
           for (const item of page.Items) {
             const converted = convertMedia(item);
             const series = mediaById.get(seriesId);
@@ -1028,22 +1032,28 @@ export class WatchStatisticsStore {
     // A migration may change every Jellyfin ItemId. Match only unambiguous
     // provider identities, then use the matched series plus season/episode.
     const oldMedia = previous?.media ?? [];
-    const newMedia = fullScan ? media : [];
+    const newMedia = fullScan
+      ? media
+      : [...mediaById.values()].filter((m) => !oldMedia.some((old) => old.id === m.id));
     const newByProvider = new Map<string, WatchMedia[]>();
     for (const m of newMedia)
       for (const key of providerKeys(m))
         newByProvider.set(key, [...(newByProvider.get(key) ?? []), m]);
     const remap = new Map<string, string>();
-    for (const old of oldMedia.filter((m) => m.type !== "Episode")) {
+    for (const old of oldMedia.filter((m) => m.type !== "Episode" && fullScan)) {
       const matches = new Set(
         providerKeys(old)
           .flatMap((key) => newByProvider.get(key) ?? [])
           .map((m) => m.id),
       );
-      if (matches.size === 1) remap.set(old.id, [...matches][0]);
+      if (matches.size === 1 && !newMedia.some((m) => m.id === old.id && m.type === old.type))
+        remap.set(old.id, [...matches][0]);
     }
-    for (const old of oldMedia.filter((m) => m.type === "Episode")) {
-      const seriesId = old.seriesId && remap.get(old.seriesId);
+    for (const old of oldMedia.filter((m) => m.type === "Episode" && fullScan)) {
+      const seriesId =
+        old.seriesId &&
+        (remap.get(old.seriesId) ??
+          (newMedia.some((m) => m.id === old.seriesId) ? old.seriesId : undefined));
       if (!seriesId || old.seasonNumber == null || old.episodeNumber == null) continue;
       const matches = newMedia.filter(
         (m) =>
@@ -1052,7 +1062,58 @@ export class WatchStatisticsStore {
           m.seasonNumber === old.seasonNumber &&
           m.episodeNumber === old.episodeNumber,
       );
-      if (matches.length === 1) remap.set(old.id, matches[0].id);
+      if (matches.length === 1 && matches[0].id !== old.id) remap.set(old.id, matches[0].id);
+    }
+    if (!fullScan) {
+      for (const item of newMedia.filter((m) => m.type !== "Episode")) {
+        const matches = new Set(
+          providerKeys(item)
+            .flatMap((key) => oldMedia.filter((old) => providerKeys(old).includes(key)))
+            .map((old) => old.id),
+        );
+        if (matches.size === 1) remap.set(item.id, [...matches][0]);
+      }
+      for (const item of newMedia.filter((m) => m.type === "Episode")) {
+        const seriesId = item.seriesId && remap.get(item.seriesId);
+        if (!seriesId || item.seasonNumber == null || item.episodeNumber == null) continue;
+        const matches = oldMedia.filter(
+          (old) =>
+            old.type === "Episode" &&
+            old.seriesId === seriesId &&
+            old.seasonNumber === item.seasonNumber &&
+            old.episodeNumber === item.episodeNumber,
+        );
+        if (matches.length === 1) remap.set(item.id, matches[0].id);
+      }
+    }
+    // When the old library entry still exists, use it as the stable logical
+    // item for exactly one duplicate with the same provider identity.
+    for (const old of oldMedia.filter(
+      (m) => m.type !== "Episode" && newMedia.some((n) => n.id === m.id),
+    )) {
+      const matches = new Set(
+        providerKeys(old)
+          .flatMap((key) => newByProvider.get(key) ?? [])
+          .map((m) => m.id),
+      );
+      if (matches.size !== 2 || !matches.has(old.id)) continue;
+      const duplicateId = [...matches].find((id) => id !== old.id)!;
+      if (!oldMedia.some((m) => m.id === duplicateId)) remap.set(duplicateId, old.id);
+    }
+    for (const old of oldMedia.filter(
+      (m) => m.type === "Episode" && newMedia.some((n) => n.id === m.id),
+    )) {
+      const duplicateSeries = [...remap].find(([, target]) => target === old.seriesId)?.[0];
+      if (!duplicateSeries || old.seasonNumber == null || old.episodeNumber == null) continue;
+      const matches = newMedia.filter(
+        (m) =>
+          m.type === "Episode" &&
+          m.seriesId === duplicateSeries &&
+          m.seasonNumber === old.seasonNumber &&
+          m.episodeNumber === old.episodeNumber,
+      );
+      if (matches.length === 1 && !oldMedia.some((m) => m.id === matches[0].id))
+        remap.set(matches[0].id, old.id);
     }
     if (remap.size) {
       const view = await this.getView(serverId, auth.userId);
@@ -1070,6 +1131,15 @@ export class WatchStatisticsStore {
       if (remap.has(old.id)) mediaById.delete(old.id);
       else mediaById.set(old.id, old);
     }
+    for (const [from, to] of remap)
+      if (oldMedia.some((m) => m.id === to) && newMedia.some((m) => m.id === from)) {
+        const retained = mediaById.get(to);
+        const duplicate = mediaById.get(from);
+        if (retained && duplicate) {
+          retained.played = retained.played || duplicate.played;
+          mediaById.delete(from);
+        }
+      }
     const resolvedMedia = [...mediaById.values()];
     const canonical = new Map<string, string>();
     for (const m of resolvedMedia) {
@@ -1089,7 +1159,11 @@ export class WatchStatisticsStore {
       itemId: remap.get(r.itemId) ?? r.itemId,
     }));
     const merged = new Map(prior.map((record) => [record.id, record]));
-    for (const record of current) {
+    for (const incoming of current) {
+      const record = {
+        ...incoming,
+        itemId: merged.get(incoming.id)?.itemId ?? remap.get(incoming.itemId) ?? incoming.itemId,
+      };
       const legacyStart = /(?:Z|[+-]\d\d:\d\d)$/i.test(record.rawDate ?? "")
         ? record.startAt
         : new Date(`${(record.rawDate ?? "").replace(" ", "T")}Z`).toISOString();
@@ -1102,6 +1176,7 @@ export class WatchStatisticsStore {
             old.startAt === legacyStart ||
             old.startAt === record.startAt),
       );
+      let matchedId = previousMatch?.id;
       if (previousMatch) merged.delete(previousMatch.id);
       const identity = canonical.get(record.itemId);
       if (identity)
@@ -1113,10 +1188,11 @@ export class WatchStatisticsStore {
             Math.abs(Date.parse(old.startAt) - Date.parse(record.startAt)) < 2000
           ) {
             merged.delete(old.id);
+            matchedId = old.id;
             break;
           }
         }
-      merged.set(record.id, record);
+      merged.set(matchedId ?? record.id, { ...record, id: matchedId ?? record.id });
     }
     const records = [...merged.values()].sort(
       (a, b) => Date.parse(b.startAt) - Date.parse(a.startAt),
@@ -1153,7 +1229,8 @@ export class WatchStatisticsStore {
       // A reviewed or evidence-bearing candidate has no reliable provenance.
       const existingCandidate = candidates.find((entry) => entry.itemId === item.id);
       if (existingCandidate) {
-        if (existingCandidate.status !== "pending" || existingCandidate.evidenceIds.length) continue;
+        if (existingCandidate.status !== "pending" || existingCandidate.evidenceIds.length)
+          continue;
         candidates.splice(candidates.indexOf(existingCandidate), 1);
       }
       const itemRecords = records.filter(
@@ -1194,11 +1271,7 @@ export class WatchStatisticsStore {
             ...new Set([
               ...first.evidenceIds,
               ...records
-                .filter(
-                  (entry) =>
-                    entry.itemId === item.id &&
-                    !knownRecords.has(entry.id),
-                )
+                .filter((entry) => entry.itemId === item.id && !knownRecords.has(entry.id))
                 .map((entry) => entry.id),
             ]),
           ];

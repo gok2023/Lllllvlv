@@ -131,6 +131,27 @@
         background: #30343b;
         color: var(--text);
       }
+      .custom-period {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding-left: 7px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .custom-period.active {
+        color: var(--text);
+      }
+      .custom-period input {
+        width: 54px;
+        padding: 5px 3px;
+        border: 1px solid var(--line2);
+        border-radius: 4px;
+        background: var(--panel2);
+        color: var(--text);
+        font: inherit;
+        text-align: center;
+      }
       .soft-btn {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -1406,8 +1427,21 @@
         <div class="top-actions screen-only">
           <div class="seg" role="group" aria-label="选择时间范围" id="periodBtns">
             <button data-period="year" class="active">本年度</button
-            ><button data-period="d90">近 90 天</button><button data-period="d30">近 30 天</button
-            ><button data-period="all">全部</button>
+            ><button data-period="d30">近 30 天</button><button data-period="d7">近 7 天</button
+            ><button data-period="all">全部</button
+            ><label class="custom-period"
+              >近
+              <input
+                id="customDays"
+                type="number"
+                min="1"
+                max="100000"
+                step="1"
+                value="7"
+                aria-label="自定义最近天数"
+              />
+              天 <button data-period="custom" type="button">应用</button></label
+            >
           </div>
           <button class="soft-btn" id="refreshBtn" type="button">重新同步</button
           ><button class="soft-btn" id="exportBtn" type="button">导出数据</button

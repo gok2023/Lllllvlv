@@ -86,6 +86,7 @@
   const state = {
     snapshot: null,
     period: "year",
+    customDays: 7,
     focus: null,
     seriesMode: "all",
     seriesPage: 1,
@@ -128,12 +129,14 @@
   }
   function watchPreviewSignature(snapshot, ids) {
     const media = new Map((snapshot?.media || []).map((item) => [item.id, item]));
-    return JSON.stringify(ids.map((id) => ({
-      id,
-      runtimeSec: media.get(id)?.runtimeSec,
-      confirmations: (snapshot?.confirmations || []).filter((entry) => entry.itemId === id),
-      backfill: (snapshot?.backfill || []).filter((entry) => entry.itemId === id),
-    })));
+    return JSON.stringify(
+      ids.map((id) => ({
+        id,
+        runtimeSec: media.get(id)?.runtimeSec,
+        confirmations: (snapshot?.confirmations || []).filter((entry) => entry.itemId === id),
+        backfill: (snapshot?.backfill || []).filter((entry) => entry.itemId === id),
+      })),
+    );
   }
   const motion = new Map();
   function showSyncStatus(status) {
@@ -234,7 +237,8 @@
     start.setHours(0, 0, 0, 0);
     if (state.period === "year") start.setMonth(0, 1);
     else if (state.period === "d30") start.setDate(start.getDate() - 29);
-    else if (state.period === "d90") start.setDate(start.getDate() - 89);
+    else if (state.period === "d7") start.setDate(start.getDate() - 6);
+    else if (state.period === "custom") start.setDate(start.getDate() - state.customDays + 1);
     else return [null, end];
     return [start, end];
   };
@@ -257,7 +261,11 @@
       .map((r) => {
         const start = new Date(r.startAt),
           seconds = valid(r.durationSec),
-          m = mediaMapCache.get(String(r.itemId));
+          m =
+            mediaMapCache.get(String(r.itemId)) ||
+            (["Movie", "Episode"].includes(r.itemType)
+              ? { id: String(r.itemId), type: r.itemType, name: r.itemName || "未知作品" }
+              : null);
         return {
           ...r,
           start,
@@ -542,7 +550,11 @@
     parent.append(tools);
   }
   function renderWatchSeries(body, all, counts, rerender) {
-    const episodes = all.filter((m) => (m.seriesId || m.seriesName || m.id) === state.watchSeries);
+    const episodes = all.filter(
+      (m) =>
+        (m.seriesId || m.seriesName || m.id) === state.watchSeries &&
+        (state.period === "all" || counts.has(m.id)),
+    );
     const title = episodes[0]?.seriesName || mediaMapCache.get(state.watchSeries)?.name || "电视剧";
     const back = document.createElement("button");
     back.className = "watch-back";
@@ -588,7 +600,10 @@
       }
       const button = document.createElement("button");
       button.className = "watch-row-button";
-      button.textContent = `第 ${season} 季 · ${items.length} 集 · ${items.reduce((n, m) => n + (counts.get(m.id) || 0), 0)} 集次 ${state.watchSeason === season ? "⌄" : "›"}`;
+      button.textContent =
+        state.period === "all"
+          ? `第 ${season} 季 · ${items.length} 集 · ${items.reduce((n, m) => n + (counts.get(m.id) || 0), 0)} 集次 ${state.watchSeason === season ? "⌄" : "›"}`
+          : `第 ${season} 季 · 播放过 ${items.filter((m) => counts.has(m.id)).length} 集 ${state.watchSeason === season ? "⌄" : "›"}`;
       button.onclick = () => {
         state.watchSeason = state.watchSeason === season ? null : season;
         rerender();
@@ -606,7 +621,7 @@
           watchRow(
             body,
             `S${String(item.seasonNumber ?? 0).padStart(2, "0")}E${String(item.episodeNumber ?? 0).padStart(2, "0")} ${item.name}`,
-            `${counts.get(item.id)} 刷`,
+            state.period === "all" ? `${counts.get(item.id)} 刷` : "期间有实播",
             () => {
               state.watchItem = { type: "Episode", id: item.id };
               rerender();
@@ -644,7 +659,9 @@
     body.append(current);
     const history = document.createElement("div");
     history.className = "watch-history";
-    const oldEstimate = (state.snapshot?.backfill || []).find((backfill) => backfill.itemId === id && backfill.durationSec > 0);
+    const oldEstimate = (state.snapshot?.backfill || []).find(
+      (backfill) => backfill.itemId === id && backfill.durationSec > 0,
+    );
     if (oldEstimate) {
       const row = document.createElement("div");
       row.className = "watch-history-row";
@@ -904,12 +921,15 @@
     results.replaceChildren();
     const unit = type === "Movie" ? "部" : "集";
     const total = [...counts.values()].reduce((sum, n) => sum + n, 0);
-    summary.textContent = `累计 ${total} ${unit}次 · 不同作品 ${counts.size} ${unit} · ${
-      [...buckets]
-        .sort((a, b) => a[0] - b[0])
-        .map(([n, c]) => `${n} 刷 ${c} ${unit}`)
-        .join(" · ") || "暂无确认"
-    }`;
+    summary.textContent =
+      state.period === "all"
+        ? `累计 ${total} ${unit}次 · 不同作品 ${counts.size} ${unit} · ${
+            [...buckets]
+              .sort((a, b) => a[0] - b[0])
+              .map(([n, c]) => `${n} 刷 ${c} ${unit}`)
+              .join(" · ") || "暂无确认"
+          }`
+        : `播放过的不同${type === "Movie" ? "电影" : "单集"} ${counts.size} ${unit} · 实播记录不代表完整观看或刷次`;
     status.textContent = state.watchStatus;
     status.hidden = !state.watchStatus;
     const rerender = () => renderBreakdown(type, bodyId, counts, buckets);
@@ -959,6 +979,7 @@
       toolbar.append(visit);
     }
     visit.value = state.watchVisit[type];
+    visit.hidden = state.period !== "all";
     visit.onchange = () => {
       state.watchVisit[type] = visit.value;
       state.breakdownPage[type] = 1;
@@ -978,8 +999,9 @@
       invalidateWatchPreview();
       rerender();
     };
-    const all = [...(state.snapshot?.media || [])].filter((m) => m.type === type);
+    const all = [...mediaMapCache.values()].filter((m) => m.type === type);
     const fits = (n) =>
+      state.period !== "all" ||
       state.watchVisit[type] === "all" ||
       (state.watchVisit[type] === "4" ? n >= 4 : n === Number(state.watchVisit[type]));
     const matched = all.filter(
@@ -1020,7 +1042,7 @@
         watchRow(
           results,
           media.name,
-          `${counts.get(media.id)} 刷`,
+          state.period === "all" ? `${counts.get(media.id)} 刷` : "期间有实播",
           () => {
             state.watchItem = { type, id: media.id };
             rerender();
@@ -1056,7 +1078,9 @@
         watchRow(
           results,
           group.name,
-          `已看 ${group.episodes.length} 集 · 累计 ${group.episodes.reduce((n, m) => n + (counts.get(m.id) || 0), 0)} 集次`,
+          state.period === "all"
+            ? `已看 ${group.episodes.length} 集 · 累计 ${group.episodes.reduce((n, m) => n + (counts.get(m.id) || 0), 0)} 集次`
+            : `播放过 ${group.episodes.length} 集`,
           () => {
             state.watchSeries = group.id;
             state.watchSeason = null;
@@ -1080,18 +1104,20 @@
         .reduce((n, r) => n + r.clippedSeconds, 0);
     animate("totalHours", (actual + backfill) / 3600, "小时", 1);
     const counts = { Movie: new Map(), Episode: new Map() };
-    const [lo, hi] = bounds();
-    for (const confirmation of state.snapshot.confirmations || []) {
-      const media = mediaMapCache.get(confirmation.itemId);
-      if (!counts[media?.type]) continue;
-      if (
-        lo &&
-        (!confirmation.confirmedAt ||
-          +new Date(confirmation.confirmedAt) < +lo ||
-          +new Date(confirmation.confirmedAt) > +hi)
-      )
-        continue;
-      counts[media.type].set(media.id, (counts[media.type].get(media.id) || 0) + 1);
+    if (state.period === "all") {
+      for (const confirmation of state.snapshot.confirmations || []) {
+        const media = mediaMapCache.get(confirmation.itemId);
+        if (counts[media?.type])
+          counts[media.type].set(media.id, (counts[media.type].get(media.id) || 0) + 1);
+      }
+    } else {
+      for (const record of records) {
+        const media = record.media;
+        if (counts[media?.type]) {
+          if (!mediaMapCache.has(media.id)) mediaMapCache.set(media.id, media);
+          counts[media.type].set(media.id, 1);
+        }
+      }
     }
     for (const [type, target, body] of [
       ["Movie", "moviesCount", "movieBreakdownBody"],
@@ -1100,8 +1126,14 @@
       const values = [...counts[type].values()];
       animate(
         target,
-        values.reduce((sum, n) => sum + n, 0),
-        type === "Movie" ? "部次" : "集次",
+        state.period === "all" ? values.reduce((sum, n) => sum + n, 0) : counts[type].size,
+        state.period === "all"
+          ? type === "Movie"
+            ? "部次"
+            : "集次"
+          : type === "Movie"
+            ? "部"
+            : "集",
       );
       const buckets = new Map();
       for (const n of values) buckets.set(n, (buckets.get(n) || 0) + 1);
@@ -1114,8 +1146,9 @@
       `最长活动实际播放 ${duration(Math.max(0, ...activities.map((g) => g.total)))} · 活动时间跨度按记录起点和时长估算，间隔不计入播放。`;
     $("rangeHint").textContent = {
       year: `统计时间：${now().getFullYear()} 年`,
-      d90: "统计时间：近 90 天",
       d30: "统计时间：近 30 天",
+      d7: "统计时间：近 7 天",
+      custom: `统计时间：近 ${state.customDays} 天`,
       all: "统计时间：全部记录",
     }[state.period];
   }
@@ -1553,6 +1586,9 @@
     document
       .querySelectorAll("[data-period]")
       .forEach((b) => b.classList.toggle("active", b.dataset.period === state.period));
+    $("customDays")
+      .closest(".custom-period")
+      .classList.toggle("active", state.period === "custom");
     $("backfillHint").textContent =
       state.period !== "all"
         ? "历史补录估算仅计入“全部”时间范围。"
@@ -1759,8 +1795,11 @@
     void review({ action: "confirm", itemIds: [...state.candidateSelection] });
   function applySnapshot(result, restoreSettings) {
     const ids = state.watchPreview?.input.itemIds || [...state.watchSelection];
-    if (!state.snapshot || !ids.length ||
-        watchPreviewSignature(state.snapshot, ids) !== watchPreviewSignature(result, ids))
+    if (
+      !state.snapshot ||
+      !ids.length ||
+      watchPreviewSignature(state.snapshot, ids) !== watchPreviewSignature(result, ids)
+    )
       invalidateWatchPreview();
     state.snapshot = result;
     if (restoreSettings) {
@@ -1836,13 +1875,40 @@
   $("periodBtns").onclick = (e) => {
     const b = e.target.closest("[data-period]");
     if (b) {
+      if (b.dataset.period === "custom") {
+        const input = $("customDays");
+        if (
+          !/^[1-9]\d*$/.test(input.value) ||
+          !Number.isSafeInteger(Number(input.value)) ||
+          Number(input.value) > 100000
+        ) {
+          input.setCustomValidity("请输入 1–100000 的整数天数");
+          input.reportValidity();
+          return;
+        }
+        input.setCustomValidity("");
+        state.customDays = Number(input.value);
+      }
       state.period = b.dataset.period;
+      state.watchItem = null;
+      state.watchSeries = null;
+      state.watchSeason = null;
+      state.watchSelection.clear();
+      state.watchBatch = false;
+      invalidateWatchPreview();
       state.calendarYear = null;
       state.focus = null;
       state.activityPage = 1;
       render();
     }
   };
+  $("customDays").onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("periodBtns").querySelector('[data-period="custom"]').click();
+    }
+  };
+  $("customDays").oninput = (event) => event.target.setCustomValidity("");
   $("calendarYear").onchange = (event) => {
     state.calendarYear = Number(event.target.value);
     renderCalendar(slices(selectedRecords()));
