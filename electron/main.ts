@@ -152,10 +152,16 @@ function publishWatchStatus() {
   if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-status", watchStatus());
 }
 const watchUserPath = join(userDataPath, "watch-statistics", "current-user.json");
-function watchServer() {
-  const server = store.value.servers.find(
+function selectedWatchServer() {
+  const selected = store.value.servers.find(
     (item) => item.id === store.value.activeServerId && item.providerId === "jellyfin",
   );
+  return selected ?? store.value.servers.find(
+    (item) => item.id === watchAuth?.serverId && item.providerId === "jellyfin",
+  ) ?? store.value.servers.find((item) => item.providerId === "jellyfin");
+}
+function watchServer() {
+  const server = selectedWatchServer();
   if (!server) throw new Error("请先选择 Jellyfin 服务");
   return server;
 }
@@ -196,9 +202,10 @@ async function watchUserId(serverId: string) {
 async function watchIdentity() {
   const server = watchServer();
   let auth: { baseUrl: string; userId: string; token: string } | undefined;
-  if (activeServer?.id === server.id && guest && !guest.webContents.isDestroyed()) {
+  const watchView = serverViews.get(server.id)?.view;
+  if (watchView && !watchView.webContents.isDestroyed()) {
     try {
-      auth = await guest.webContents.executeJavaScript(
+      auth = await watchView.webContents.executeJavaScript(
         `(() => { const api = window.ApiClient; return api && {baseUrl:api.serverAddress?.(),userId:api.getCurrentUserId?.(),token:api.accessToken?.()}; })()`,
       );
     } catch {
@@ -216,7 +223,9 @@ async function watchIdentity() {
     throw new Error("请先在「服务」中登录 Jellyfin");
   if (!/^[0-9a-f]{32}$/i.test(auth.userId.replace(/-/g, "")))
     throw new Error("Jellyfin 用户 ID 无效");
+  const previousWatchServerId = watchAuth?.serverId;
   watchAuth = { serverId: server.id, auth };
+  if (previousWatchServerId !== server.id) publish();
   void rememberWatchUser(server.id, auth.userId).catch((error) => log(String(error)));
   if (!watchBinding) {
     watchBinding = watchStatistics
@@ -434,7 +443,16 @@ function finishStartupVideo() {
     window.setFullScreen(false);
   } else window.maximize();
 }
-let guest: WebContentsView | undefined;
+type ServerViewState = {
+  server: Server;
+  view: WebContentsView;
+  webStatus: AppState["webStatus"];
+  webError?: string;
+  adapterStatus?: AppState["adapterStatus"];
+  bootstrapRetries: number;
+};
+const serverViews = new Map<string, ServerViewState>();
+let activeView: ServerViewState | undefined;
 let shown = false;
 let page: AppPage = "home";
 let settingsPage: SettingsPage = "servers";
@@ -481,11 +499,18 @@ let playbackClient: PlaybackClient | undefined;
 let popupAnchor: { x: number; y: number; width: number; height: number } | undefined;
 let popupBlurTimer: ReturnType<typeof setTimeout> | undefined;
 let errorVisible = false;
-let activeServer: Server | undefined;
-let webStatus: AppState["webStatus"] = "closed";
-let webError: string | undefined;
-let adapterStatus: AppState["adapterStatus"];
-let bootstrapRetries = 0;
+function viewForSender(sender: Electron.WebContents) {
+  return [...serverViews.values()].find((entry) => entry.view.webContents === sender);
+}
+function isRegistered(entry: ServerViewState) {
+  return serverViews.get(entry.server.id) === entry && !entry.view.webContents.isDestroyed();
+}
+function publishView(entry: ServerViewState) {
+  if (activeView === entry) {
+    layout();
+    publish();
+  }
+}
 const serverFavicons = new Map<string, { url: string; icon: string }>();
 const diagnostics: { time: string; message: string }[] = [];
 function log(message: string) {
@@ -507,7 +532,7 @@ function getDiagnostics() {
 }
 let stateRevision = 0;
 function state(): AppState {
-  const contents = guest && !guest.webContents.isDestroyed() ? guest.webContents : undefined;
+  const contents = activeView && isRegistered(activeView) ? activeView.view.webContents : undefined;
   return {
     revision: ++stateRevision,
     settings: store.value,
@@ -515,8 +540,8 @@ function state(): AppState {
     platform: process.platform as Platform,
     version: app.getVersion(),
     updates: updates?.state ?? { status: "disabled", reason: "fork-disabled" },
-    webStatus,
-    webError,
+    webStatus: activeView?.webStatus ?? "closed",
+    webError: activeView?.webError,
     credentialsAvailable,
     serverFavicons: Object.fromEntries(
       store.value.servers.flatMap((server) => {
@@ -524,7 +549,8 @@ function state(): AppState {
         return saved?.url === server.url ? [[server.id, saved.icon]] : [];
       }),
     ),
-    adapterStatus,
+    adapterStatus: activeView?.adapterStatus,
+    watchStatisticsServerId: selectedWatchServer()?.id,
     locale: locale(),
     providers: [
       ...providers.list(),
@@ -540,7 +566,8 @@ function state(): AppState {
         : undefined,
     browser: {
       url: contents?.getURL() ?? "",
-      serverId: activeServer?.id,
+      serverId: activeView?.server.id,
+      openServerIds: [...serverViews.keys()],
       canGoBack: contents?.navigationHistory.canGoBack() ?? false,
       canGoForward: contents?.navigationHistory.canGoForward() ?? false,
     },
@@ -553,10 +580,10 @@ function publish() {
   for (const target of [window, playbackPopup, serverPopup]) sendWindowState(target, snapshot);
 }
 function layout() {
-  if (!guest || !window || window.isDestroyed()) return;
+  if (!window || window.isDestroyed()) return;
   const [width, height] = window.getContentSize();
-  const top = 88 + (webError || errorVisible ? 64 : 0);
-  guest.setBounds({
+  const top = 88 + (activeView?.webError || errorVisible ? 64 : 0);
+  activeView?.view.setBounds({
     x: 0,
     y: shown ? top : height,
     width,
@@ -602,48 +629,63 @@ async function performScan() {
   await store.save({ ...store.value, players, defaultPlayerId, playerScanCompleted: true });
   publish();
 }
-function closeGuest() {
-  if (!guest) return;
-  const view = guest;
-  guest = undefined;
-  if (window && !window.isDestroyed()) window.contentView.removeChildView(view);
-  if (!view.webContents.isDestroyed()) view.webContents.close();
-  activeServer = undefined;
-  adapterStatus = undefined;
-  bootstrapRetries = 0;
-  webStatus = "closed";
+function closeServerView(id: string) {
+  const entry = serverViews.get(id);
+  if (!entry) return;
+  serverViews.delete(id);
+  const wasActive = activeView === entry;
+  if (window && !window.isDestroyed()) window.contentView.removeChildView(entry.view);
+  if (activeView === entry) {
+    activeView = [...serverViews.values()].at(-1);
+    if (activeView && window && !window.isDestroyed())
+      window.contentView.addChildView(activeView.view);
+    if (!activeView && page === "library") {
+      shown = false;
+      page = "home";
+    }
+  }
+  if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
+  if (wasActive) layout();
+  publish();
+}
+function closeAllServerViews() {
+  for (const id of [...serverViews.keys()]) closeServerView(id);
+}
+function activateView(entry: ServerViewState) {
+  if (activeView !== entry) {
+    if (activeView && isRegistered(activeView))
+      window.contentView.removeChildView(activeView.view);
+    activeView = entry;
+    window.contentView.addChildView(entry.view);
+  }
+  shown = true;
+  page = "library";
+  layout();
 }
 async function openServer(id: string, destination?: string) {
   hideServerPopup();
   const server = store.value.servers.find((s) => s.id === id);
   if (!server) throw new UserFacingError("serverMissing");
-  if (
-    activeServer?.id === id &&
-    activeServer.url === server.url &&
-    activeServer.providerId === server.providerId &&
-    guest
-  ) {
-    shown = true;
-    page = "library";
-    layout();
+  let existing = serverViews.get(id);
+  if (existing && (existing.server.url !== server.url || existing.server.providerId !== server.providerId)) {
+    closeServerView(id);
+    existing = undefined;
+  }
+  if (existing && isRegistered(existing)) {
+    activateView(existing);
     if (destination)
-      void guest.webContents.loadURL(destination).catch((error) => log(String(error)));
+      void existing.view.webContents.loadURL(destination).catch((error) => log(String(error)));
+    await store.save({ ...store.value, activeServerId: id });
     publish();
     return;
   }
   const isWeb = server.providerId === "web";
   const provider = isWeb ? undefined : providers.get(server.providerId);
-  closeGuest();
-  activeServer = server;
-  shown = true;
-  page = "library";
-  webError = undefined;
-  webStatus = "loading";
   const ses = session.fromPartition(servicePartition(server));
   // Emby treats Electron as its own desktop client and requests a missing native plugin.
   ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
   ses.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  guest = new WebContentsView({
+  const view = new WebContentsView({
     webPreferences: {
       ...(provider ? { preload: join(__dirname, provider.preload) } : {}),
       partition: servicePartition(server),
@@ -653,21 +695,22 @@ async function openServer(id: string, destination?: string) {
       webSecurity: true,
     },
   });
-  const view = guest;
+  const entry: ServerViewState = { server, view, webStatus: "loading", bootstrapRetries: 0 };
+  serverViews.set(id, entry);
   const faviconFetcher = provider
     ? guardServerAccess(browserFetcher(ses, provider.entryUrl(server)))
     : undefined;
   let faviconRevision = 0;
   let faviconKey: string | undefined;
   view.webContents.on("page-favicon-updated", (_event, favicons) => {
-    if (guest !== view) return;
+    if (!isRegistered(entry)) return;
     const key = favicons.join("\n");
     if (key === faviconKey) return;
     faviconKey = key;
     const revision = ++faviconRevision;
     if (!faviconFetcher) return;
     void loadFavicon(favicons, faviconFetcher).then((icon) => {
-      if (guest !== view || revision !== faviconRevision || view.webContents.isDestroyed()) return;
+      if (!isRegistered(entry) || revision !== faviconRevision) return;
       if (icon) serverFavicons.set(server.id, { url: server.url, icon });
       else if (!favicons.length) serverFavicons.delete(server.id);
       publish();
@@ -693,18 +736,16 @@ async function openServer(id: string, destination?: string) {
     if (isWeb && /^https?:\/\//i.test(url)) return;
     if (!/^https?:\/\//i.test(url) || new URL(url).origin !== origin) {
       event.preventDefault();
-      webError = errorToken("externalNavigation");
-      layout();
-      publish();
+      entry.webError = errorToken("externalNavigation");
+      publishView(entry);
     }
   };
   view.webContents.on("will-navigate", guardNavigation);
   view.webContents.on("will-redirect", guardNavigation);
   view.webContents.on("dom-ready", () => {
-    if (guest !== view) return;
-    if (webStatus !== "error" && !view.webContents.getURL().startsWith("chrome-error:")) {
-      layout();
-      publish();
+    if (!isRegistered(entry)) return;
+    if (entry.webStatus !== "error" && !view.webContents.getURL().startsWith("chrome-error:")) {
+      publishView(entry);
     }
     if (provider?.adapterScript)
       void view.webContents
@@ -712,38 +753,37 @@ async function openServer(id: string, destination?: string) {
         .catch((error) => log(String(error)));
   });
   view.webContents.on("did-start-loading", () => {
-    if (guest !== view) return;
-    webStatus = "loading";
-    publish();
+    if (!isRegistered(entry)) return;
+    entry.webStatus = "loading";
+    publishView(entry);
   });
   view.webContents.on("did-stop-loading", () => {
-    if (guest !== view || webStatus === "error") return;
-    webStatus = "ready";
-    publish();
+    if (!isRegistered(entry) || entry.webStatus === "error") return;
+    entry.webStatus = "ready";
+    publishView(entry);
   });
   view.webContents.on("did-start-navigation", (event) => {
-    if (guest !== view || !event.isMainFrame || event.isSameDocument) return;
+    if (!isRegistered(entry) || !event.isMainFrame || event.isSameDocument) return;
     faviconRevision++;
     faviconKey = undefined;
-    webStatus = "loading";
-    webError = undefined;
-    adapterStatus = undefined;
-    layout();
-    publish();
+    entry.webStatus = "loading";
+    entry.webError = undefined;
+    entry.adapterStatus = undefined;
+    publishView(entry);
   });
   view.webContents.on("did-finish-load", () => {
     if (
-      guest !== view ||
-      webStatus === "error" ||
+      !isRegistered(entry) ||
+      entry.webStatus === "error" ||
       view.webContents.getURL().startsWith("chrome-error:")
     )
       return;
-    webError = undefined;
-    layout();
-    publish();
+    entry.webError = undefined;
+    publishView(entry);
     if (server.providerId === "jellyfin") {
       setTimeout(() => {
-        if (guest !== view) return;
+        if (!isRegistered(entry)) return;
+        if (watchServer().id !== entry.server.id) return;
         void watchIdentity()
           .then(() => syncWatch("incremental"))
           .catch(() => {});
@@ -751,28 +791,26 @@ async function openServer(id: string, destination?: string) {
     }
   });
   view.webContents.on("did-fail-load", (_event, code, _description, _url, mainFrame) => {
-    if (!mainFrame || code === -3 || guest !== view) return;
-    webStatus = "error";
-    webError = errorToken("webFailed", { code });
-    layout();
-    publish();
+    if (!mainFrame || code === -3 || !isRegistered(entry)) return;
+    entry.webStatus = "error";
+    entry.webError = errorToken("webFailed", { code });
+    publishView(entry);
   });
-  view.webContents.on("did-navigate-in-page", publish);
-  view.webContents.on("did-navigate", publish);
+  view.webContents.on("did-navigate-in-page", () => publishView(entry));
+  view.webContents.on("did-navigate", () => publishView(entry));
   view.webContents.on("render-process-gone", () => {
-    if (guest !== view) return;
-    webStatus = "error";
-    webError = errorToken("webFailed", { code: "renderer" });
-    layout();
-    publish();
+    if (!isRegistered(entry)) return;
+    entry.webStatus = "error";
+    entry.webError = errorToken("webFailed", { code: "renderer" });
+    publishView(entry);
   });
-  window.contentView.addChildView(view);
-  layout();
+  activateView(entry);
   await store.save({ ...store.value, activeServerId: id });
   publish();
-  void view.webContents
-    .loadURL(destination ?? (provider ? provider.entryUrl(server) : server.url))
-    .catch((error) => log(String(error)));
+  if (isRegistered(entry))
+    void view.webContents
+      .loadURL(destination ?? (provider ? provider.entryUrl(server) : server.url))
+      .catch((error) => log(String(error)));
 }
 
 function hidePlaybackPopup() {
@@ -1297,11 +1335,9 @@ function setupIPC() {
           await credentials.set(saved, null);
       },
     );
-    if (
-      activeServer?.id === savedServer.id &&
-      (server.credentials !== undefined || activeServer.url !== savedServer.url)
-    )
-      closeGuest();
+    const opened = serverViews.get(savedServer.id);
+    if (opened && (server.credentials !== undefined || opened.server.url !== savedServer.url || opened.server.providerId !== savedServer.providerId))
+      closeServerView(savedServer.id);
     publish();
     return state();
   });
@@ -1351,8 +1387,7 @@ function setupIPC() {
     if (!server) throw new UserFacingError("serverMissing");
     await credentials.set(server, null);
     serverFavicons.delete(id);
-    if (activeServer?.id === id) closeGuest();
-    if (page === "library" && !guest) page = "home";
+    closeServerView(id);
     const servers = store.value.servers.filter((s) => s.id !== id);
     await store.save({
       ...store.value,
@@ -1365,6 +1400,10 @@ function setupIPC() {
   });
   handle("app:open-server", async (input) => {
     await openServer(idSchema.parse(input));
+    return state();
+  });
+  handle("app:close-server", (input) => {
+    closeServerView(idSchema.parse(input));
     return state();
   });
   handle("app:page", (input) => {
@@ -1530,35 +1569,37 @@ function setupIPC() {
     const action = z
       .enum(["back", "forward", "reload", "forceReload", "stop", "home"])
       .parse(input);
-    if (!guest || !activeServer) return;
+    const entry = activeView;
+    if (page !== "library" || !entry || !isRegistered(entry)) return;
+    const { view, server } = entry;
     if (action === "home")
-      void guest.webContents.loadURL(
-        activeServer.providerId === "web"
-          ? activeServer.url
-          : providers.get(activeServer.providerId).entryUrl(activeServer, true),
+      void view.webContents.loadURL(
+        server.providerId === "web"
+          ? server.url
+          : providers.get(server.providerId).entryUrl(server, true),
       );
     else if (action === "reload" || action === "forceReload") {
-      webError = undefined;
-      webStatus = "loading";
-      bootstrapRetries = 0;
+      entry.webError = undefined;
+      entry.webStatus = "loading";
+      entry.bootstrapRetries = 0;
       layout();
       publish();
-      if (action === "forceReload") guest.webContents.reloadIgnoringCache();
-      else guest.webContents.reload();
+      if (action === "forceReload") view.webContents.reloadIgnoringCache();
+      else view.webContents.reload();
     } else if (action === "stop") {
-      guest.webContents.stop();
-      if (webStatus !== "error") webStatus = "ready";
+      view.webContents.stop();
+      if (entry.webStatus !== "error") entry.webStatus = "ready";
       publish();
-    } else if (action === "back" && guest.webContents.navigationHistory.canGoBack())
-      guest.webContents.navigationHistory.goBack();
-    else if (action === "forward" && guest.webContents.navigationHistory.canGoForward())
-      guest.webContents.navigationHistory.goForward();
+    } else if (action === "back" && view.webContents.navigationHistory.canGoBack())
+      view.webContents.navigationHistory.goBack();
+    else if (action === "forward" && view.webContents.navigationHistory.canGoForward())
+      view.webContents.navigationHistory.goForward();
   });
   handle("app:reset-session", async (input) => {
     const id = idSchema.parse(input);
     const server = store.value.servers.find((s) => s.id === id);
     if (!server) throw new UserFacingError("serverMissing");
-    if (activeServer?.id === id) closeGuest();
+    closeServerView(id);
     await session.fromPartition(servicePartition(server)).clearStorageData();
     publish();
     return state();
@@ -1610,30 +1651,31 @@ function setupIPC() {
     );
   });
   ipcMain.on("server:ready", (event, status) => {
+    const entry = viewForSender(event.sender);
     if (
-      guest &&
-      activeServer?.providerId !== "web" &&
-      event.sender === guest.webContents &&
-      event.senderFrame === guest.webContents.mainFrame
+      entry &&
+      entry.server.providerId !== "web" &&
+      event.senderFrame === entry.view.webContents.mainFrame
     ) {
       const result = z.enum(["waiting", "sign-in", "ready", "error", "stalled"]).safeParse(status);
       if (result.success) {
         if (result.data === "stalled") {
-          if (bootstrapRetries++ === 0) {
+          if (entry.bootstrapRetries++ === 0) {
             log("Initial server bootstrap stalled; retrying once");
-            guest.webContents.reload();
-          } else adapterStatus = "error";
-          publish();
+            entry.view.webContents.reload();
+          } else entry.adapterStatus = "error";
+          publishView(entry);
           return;
         }
-        adapterStatus = result.data;
-        publish();
+        entry.adapterStatus = result.data;
+        publishView(entry);
       }
     }
   });
   ipcMain.handle("server:credentials", async (event) => {
-    const view = guest;
-    const server = activeServer;
+    const entry = viewForSender(event.sender);
+    const view = entry?.view;
+    const server = entry?.server;
     const frame = event.senderFrame;
     if (
       !view ||
@@ -1648,20 +1690,19 @@ function setupIPC() {
     const frameUrl = frame.url;
     const saved = await credentials.get(server);
     // A pending keychain read must not deliver secrets to a newly navigated page.
-    if (guest !== view || frame.isDestroyed() || frame.url !== frameUrl) return null;
+    if (!entry || !isRegistered(entry) || frame.isDestroyed() || frame.url !== frameUrl) return null;
     return saved;
   });
   ipcMain.handle("server:play", async (event, input) => {
+    const entry = viewForSender(event.sender);
     if (
-      !guest ||
-      !activeServer ||
-      activeServer.providerId === "web" ||
-      event.sender !== guest.webContents ||
-      event.senderFrame !== guest.webContents.mainFrame
+      !entry ||
+      entry.server.providerId === "web" ||
+      event.senderFrame !== entry.view.webContents.mainFrame
     )
       throw new UserFacingError("invalidOrigin");
-    const provider = providers.get(activeServer.providerId);
-    const request = provider.parsePlayback(input, activeServer);
+    const provider = providers.get(entry.server.providerId);
+    const request = provider.parsePlayback(input, entry.server);
     const { intent } = request;
     const player = store.value.players.find((p) => p.id === store.value.defaultPlayerId);
     if (!player) {
@@ -1677,10 +1718,10 @@ function setupIPC() {
       publish();
       return;
     }
-    const server = activeServer;
+    const server = entry.server;
     playbackServer = server;
-    const browserSession = guest.webContents.session;
-    const fetch = guardServerAccess(browserFetcher(browserSession, guest.webContents.getURL()));
+    const browserSession = entry.view.webContents.session;
+    const fetch = guardServerAccess(browserFetcher(browserSession, entry.view.webContents.getURL()));
     const fetcher = async (url: string, init?: RequestInit) => {
       const response = await fetch(url, init);
       if (!response.ok) {
@@ -2127,7 +2168,7 @@ void app.whenReady().then(async () => {
     clearTimeout(serverPopupBlurTimer);
     popupAnchor = undefined;
     serverPopupAnchor = undefined;
-    closeGuest();
+    closeAllServerViews();
     if (isLiveWindow(playbackPopup)) playbackPopup.destroy();
     if (isLiveWindow(serverPopup)) serverPopup.destroy();
   });

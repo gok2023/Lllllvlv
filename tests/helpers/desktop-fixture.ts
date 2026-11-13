@@ -38,7 +38,7 @@ export function createDesktopFixture() {
     serverPopupOpen: false,
     fullscreen: false,
     playback: { status: "idle", position: 0, duration: 0, queue: [], index: 0 },
-    browser: { url: "", canGoBack: false, canGoForward: false },
+    browser: { url: "", openServerIds: [], canGoBack: false, canGoForward: false },
   };
   const listeners = new Set<(state: AppState) => void>();
   const addListeners = new Set<() => void>();
@@ -111,11 +111,23 @@ export function createDesktopFixture() {
         browser: {
           url: "https://example.test/web/",
           serverId: id,
+          openServerIds: state.browser.openServerIds.includes(id)
+            ? state.browser.openServerIds
+            : [...state.browser.openServerIds, id],
           canGoBack: false,
           canGoForward: false,
         },
       }),
     ),
+    closeServer: vi.fn(async (id) => {
+      const openServerIds = state.browser.openServerIds.filter((serverId) => serverId !== id);
+      const serverId =
+        state.browser.serverId === id ? openServerIds.at(-1) : state.browser.serverId;
+      return push({
+        page: state.browser.serverId === id && !serverId ? "home" : state.page,
+        browser: { ...state.browser, serverId, openServerIds },
+      });
+    }),
     saveServer: vi.fn(async (input: ServerInput) => {
       const server = {
         id: input.id ?? "70000000-0000-4000-8000-000000000002",

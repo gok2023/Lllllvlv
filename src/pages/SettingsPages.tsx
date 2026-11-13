@@ -40,6 +40,7 @@ import {
 } from "../shared/visual-themes";
 import { settingsPaths } from "../routing";
 import { showProductLinks } from "../shared/product-links";
+import { settingsDrafts } from "../runtime/settings-drafts";
 
 const settingPages = [
   { id: "servers", icon: Globe2 },
@@ -194,17 +195,22 @@ export function ServerEditorPage() {
       <Heading title={t(serverId ? "editServer" : "addServer")} />
       <ServerForm
         key={serverId ?? "new"}
+        preserveDraft
         server={server}
         providers={state.providers}
         credentialsAvailable={state.credentialsAvailable}
         loadCredentials={runtime.api.getServerCredentials}
         testConnection={runtime.api.testServerConnection}
         saving={isPending("save")}
-        onCancel={() => void navigate({ to: "/settings/servers" })}
+        onCancel={() => {
+          settingsDrafts.clearServer(serverId ?? "new");
+          void navigate({ to: "/settings/servers" });
+        }}
         onSave={(input) =>
           void run("save", async (api) => {
             const updated = await api.saveServer(input);
             runtime.applyState(updated);
+            settingsDrafts.clearServer(serverId ?? "new");
             await navigate({ to: "/settings/servers" });
             return updated;
           })
@@ -278,6 +284,7 @@ export function PlayerEditorPage() {
       <Heading title={t(playerId ? "editCustomPlayer" : "addCustomPlayer")} />
       <CustomPlayerForm
         key={playerId ?? "new"}
+        preserveDraft
         player={player}
         saving={isPending("save-custom-player")}
         chooseExecutable={async () => {
@@ -287,11 +294,15 @@ export function PlayerEditorPage() {
           });
           return selected;
         }}
-        onCancel={() => void navigate({ to: "/settings/players" })}
+        onCancel={() => {
+          settingsDrafts.clearPlayer(playerId ?? "new");
+          void navigate({ to: "/settings/players" });
+        }}
         onSave={(input) =>
           void run("save-custom-player", async (api) => {
             const updated = await api.saveCustomPlayer(input);
             runtime.applyState(updated);
+            settingsDrafts.clearPlayer(playerId ?? "new");
             await navigate({ to: "/settings/players" });
             return updated;
           })
@@ -457,7 +468,7 @@ export function StatisticsPage() {
 export function StatisticsFrame({ visible }: { visible: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const { runtime, state } = useApp();
-  const serverId = state.settings.activeServerId;
+  const serverId = state.watchStatisticsServerId;
   const syncVisualTheme = () => {
     const selected = resolveVisualBackground(
       "elysium",

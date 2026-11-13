@@ -40,6 +40,7 @@ const api: DesktopAPI = {
   testServerConnection: (server) => ipcRenderer.invoke("app:test-server-connection", server),
   removeServer: (id) => ipcRenderer.invoke("app:remove-server", id),
   openServer: (id) => ipcRenderer.invoke("app:open-server", id),
+  closeServer: (id) => ipcRenderer.invoke("app:close-server", id),
   showPage: (page, section) => ipcRenderer.invoke("app:page", { page, section }),
   togglePlaybackPopup: (anchor) => ipcRenderer.invoke("app:playback-popup", anchor),
   hidePlaybackPopup: () => ipcRenderer.invoke("app:playback-popup", null),

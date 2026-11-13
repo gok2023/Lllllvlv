@@ -206,7 +206,14 @@ export interface AppState {
   playbackPopupOpen: boolean;
   serverPopupOpen: boolean;
   playbackSource?: { serverId: string; itemId: string };
-  browser: { url: string; serverId?: string; canGoBack: boolean; canGoForward: boolean };
+  watchStatisticsServerId?: string;
+  browser: {
+    url: string;
+    serverId?: string;
+    openServerIds: string[];
+    canGoBack: boolean;
+    canGoForward: boolean;
+  };
   fullscreen: boolean;
 }
 export type PlaybackControl =
@@ -271,6 +278,7 @@ export interface DesktopAPI {
   testServerConnection(this: void, server: ServerConnectionInput): Promise<ServerConnectionResult>;
   removeServer(this: void, id: string): Promise<AppState>;
   openServer(this: void, id: string): Promise<AppState>;
+  closeServer(this: void, id: string): Promise<AppState>;
   showPage(this: void, page: AppPage, section?: SettingsPage): Promise<void>;
   togglePlaybackPopup(
     this: void,

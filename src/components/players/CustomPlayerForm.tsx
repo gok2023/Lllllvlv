@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { FolderOpen, LoaderCircle } from "lucide-react";
 import { useAppTranslation } from "../../i18n";
 import type { CustomPlayerInput, DesktopAPI, Player } from "../../shared/types";
@@ -9,6 +9,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
+import { settingsDrafts } from "../../runtime/settings-drafts";
 
 export function CustomPlayerForm({
   player,
@@ -16,19 +17,29 @@ export function CustomPlayerForm({
   chooseExecutable,
   onSave,
   onCancel,
+  preserveDraft = false,
 }: {
   player?: Player;
   saving: boolean;
   chooseExecutable: DesktopAPI["choosePlayerExecutable"];
   onSave: (input: CustomPlayerInput) => void;
   onCancel: () => void;
+  preserveDraft?: boolean;
 }) {
   const { t } = useAppTranslation();
   const fieldId = useId();
-  const [name, setName] = useState(player?.name ?? "");
-  const [executable, setExecutable] = useState(player?.executable ?? "");
-  const [argumentsText, setArgumentsText] = useState((player?.arguments ?? ["{url}"]).join("\n"));
-  const [mpvIpc, setMpvIpc] = useState(player?.mpvIpc ?? false);
+  const draftId = player?.id ?? "new";
+  const draft = preserveDraft ? settingsDrafts.player(draftId) : undefined;
+  const [name, setName] = useState(draft?.name ?? player?.name ?? "");
+  const [executable, setExecutable] = useState(draft?.executable ?? player?.executable ?? "");
+  const [argumentsText, setArgumentsText] = useState(
+    draft?.argumentsText ?? (player?.arguments ?? ["{url}"]).join("\n"),
+  );
+  const [mpvIpc, setMpvIpc] = useState(draft?.mpvIpc ?? player?.mpvIpc ?? false);
+  useEffect(() => {
+    if (preserveDraft)
+      settingsDrafts.savePlayer(draftId, { name, executable, argumentsText, mpvIpc });
+  }, [preserveDraft, draftId, name, executable, argumentsText, mpvIpc]);
   const [choosing, setChoosing] = useState(false);
   const [argumentsError, setArgumentsError] = useState<MessageKey>();
   const title = t(player ? "editCustomPlayer" : "addCustomPlayer");

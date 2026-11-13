@@ -15,6 +15,7 @@ import type {
   ServerConnectionResult,
 } from "../../shared/types";
 import { localizeError, type MessageKey } from "../../shared/i18n";
+import { settingsDrafts } from "../../runtime/settings-drafts";
 
 export function ServerForm({
   server,
@@ -26,6 +27,7 @@ export function ServerForm({
   loadCredentials,
   testConnection,
   submitLabel = "save",
+  preserveDraft = false,
 }: {
   server: Partial<Server>;
   saving: boolean;
@@ -36,12 +38,20 @@ export function ServerForm({
   loadCredentials?: DesktopAPI["getServerCredentials"];
   testConnection: DesktopAPI["testServerConnection"];
   submitLabel?: MessageKey;
+  preserveDraft?: boolean;
 }) {
   const { t, locale } = useAppTranslation();
   const fieldId = useId();
-  const [name, setName] = useState(server.name ?? "");
-  const [url, setUrl] = useState(server.url ?? "");
-  const [providerId, setProviderId] = useState(server.providerId ?? providers[0]?.id ?? "emby");
+  const draftId = server.id ?? "new";
+  const draft = preserveDraft ? settingsDrafts.server(draftId) : undefined;
+  const [name, setName] = useState(draft?.name ?? server.name ?? "");
+  const [url, setUrl] = useState(draft?.url ?? server.url ?? "");
+  const [providerId, setProviderId] = useState(
+    draft?.providerId ?? server.providerId ?? providers[0]?.id ?? "emby",
+  );
+  useEffect(() => {
+    if (preserveDraft) settingsDrafts.saveServer(draftId, { name, url, providerId });
+  }, [preserveDraft, draftId, name, url, providerId]);
   const isWeb = providerId === "web";
   const supportsCredentials =
     !isWeb &&

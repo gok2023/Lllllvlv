@@ -1,6 +1,5 @@
-import { desktopStateKey } from "../../runtime/desktop";
 import { useEffect, useRef, useState } from "react";
-import { Outlet, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
+import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
   ArrowLeft,
@@ -21,16 +20,17 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { BrandName } from "../shared/Brand";
 import { SiteIcon } from "../shared/SiteIcon";
-import type { AppState, Server } from "../../shared/types";
+import type { Server } from "../../shared/types";
 import { localizeError } from "../../shared/i18n";
 import { serverLabel } from "../../shared/servers";
 import { useAppTranslation } from "../../i18n";
 import { useApp } from "../../runtime/context";
 import { settingsPaths, pageFromPath } from "../../routing";
 import { StatisticsFrame } from "../../pages/SettingsPages";
+import { settingsDrafts } from "../../runtime/settings-drafts";
 
 export function BrowserShell() {
-  const { state, runtime, run, error: actionError, clearError } = useApp();
+  const { state, run, error: actionError, clearError } = useApp();
   const { t, locale, errorText } = useAppTranslation();
   const error = actionError ? errorText(actionError) : "";
   const navigate = useNavigate();
@@ -38,6 +38,14 @@ export function BrowserShell() {
   const page = pageFromPath(pathname);
   const [settingsOpened, setSettingsOpened] = useState(page === "settings");
   const [statisticsOpened, setStatisticsOpened] = useState(pathname === settingsPaths.statistics);
+  const settingsPath = useRef(page === "settings" ? pathname : settingsPaths[state.settingsPage]);
+  useEffect(() => {
+    if (page === "settings") {
+      settingsPath.current = pathname;
+      setSettingsOpened(true);
+      if (pathname === settingsPaths.statistics) setStatisticsOpened(true);
+    }
+  }, [page, pathname]);
   const [enjoyBackground, setEnjoyBackground] = useState(false);
   const showingBackground =
     enjoyBackground && page === "home" && state.settings.visualTheme === "elysium";
@@ -59,27 +67,13 @@ export function BrowserShell() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showingBackground]);
-  const [tabs, setTabs] = useState<string[]>(
-    state.page === "library" && state.browser.serverId ? [state.browser.serverId] : [],
-  );
-  const router = useRouter();
-  useEffect(
-    () =>
-      router.subscribe("onResolved", ({ toLocation }) => {
-        const resolvedPage = pageFromPath(toLocation.pathname);
-        if (resolvedPage === "settings") setSettingsOpened(true);
-        if (toLocation.pathname === settingsPaths.statistics) setStatisticsOpened(true);
-        if (resolvedPage === "library") {
-          const id = runtime.queryClient.getQueryData<AppState>(desktopStateKey)?.browser.serverId;
-          if (id) setTabs((current) => (current.includes(id) ? current : [...current, id]));
-        }
-      }),
-    [router, runtime],
-  );
   const go = (next: "home" | "setup" | "settings", section = state.settingsPage) => {
     setEnjoyBackground(false);
     clearError();
-    if (next === "settings") void navigate({ to: settingsPaths[section] });
+    if (next === "settings")
+      void navigate({
+        to: section === state.settingsPage ? settingsPath.current : settingsPaths[section],
+      });
     else if (next === "setup") void navigate({ to: "/setup", search: { step: "welcome" } });
     else void navigate({ to: "/" });
   };
@@ -89,13 +83,7 @@ export function BrowserShell() {
     void navigate({ to: "/library/$serverId", params: { serverId: server.id } });
   };
   const closeTab = (id: string) => {
-    const remaining = tabs.filter((tab) => tab !== id);
-    setTabs(remaining);
-    if (page === "library" && state.browser.serverId === id) {
-      const next = state.settings.servers.find((server) => server.id === remaining.at(-1));
-      if (next) open(next);
-      else go("home");
-    }
+    void run("close-tab", (desktop) => desktop.closeServer(id));
   };
   const active = state.settings.servers.find((server) => server.id === state.browser.serverId);
   const mediaActive =
@@ -171,7 +159,7 @@ export function BrowserShell() {
               <img src="./icon.png" alt="" width={18} height={18} />
               <BrandName />
             </Button>
-            {tabs
+            {state.browser.openServerIds
               .map((id) => state.settings.servers.find((server) => server.id === id))
               .filter((server): server is Server => Boolean(server))
               .map((server) => (
@@ -241,6 +229,9 @@ export function BrowserShell() {
                   onClick={(event) => {
                     event.stopPropagation();
                     setSettingsOpened(false);
+                    setStatisticsOpened(false);
+                    settingsDrafts.clear();
+                    settingsPath.current = settingsPaths[state.settingsPage];
                     if (page === "settings") go("home");
                   }}
                 >
@@ -420,12 +411,7 @@ export function BrowserShell() {
           </div>
         )}
         <Outlet />
-        {statisticsOpened && (
-          <StatisticsFrame
-            key={state.settings.activeServerId || "none"}
-            visible={pathname === settingsPaths.statistics}
-          />
-        )}
+        {statisticsOpened && <StatisticsFrame visible={pathname === settingsPaths.statistics} />}
       </main>
     </div>
   );
