@@ -29,9 +29,9 @@ Lllllvlv keeps Freebo's familiar library websites and local playback flow while 
 
 ### Extensions in this fork
 
-- Jellyfin viewing statistics add watch confirmations, viewing-count corrections and historical estimates. Estimates are shown separately from actual playback time; this statistics feature currently supports Jellyfin only.
+- Jellyfin viewing statistics offer year, recent 30 days, recent 7 days, custom day ranges and all-time views. Recent views use actual playback; all-time viewing counts retain confirmations and historical estimates. This feature currently supports Jellyfin only.
 - Add an ordinary HTTP(S) website as a Web Service tab. It supports browsing, without playback interception or progress sync.
-- Lllllvlv branding, an optional startup video and the Elysium visual theme. The source repository does not include the original artwork; the v1.2.1 Windows release bundles official public wallpapers selected by the user. Copyright remains with the original creators, and the artwork is not covered by this project's Apache-2.0 code license.
+- Lllllvlv branding, an optional startup video and the Elysium visual theme. The source repository does not include the original artwork; Windows releases bundle official public wallpapers selected by the user. Copyright remains with the original creators, and the artwork is not covered by this project's Apache-2.0 code license.
 - Choose a user-data directory from Diagnostics on Windows. Upstream automatic updates are disabled in this fork.
 
 | System  | Players                                      |
