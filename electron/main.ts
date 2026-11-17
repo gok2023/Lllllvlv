@@ -138,6 +138,9 @@ let watchAuth:
   | { serverId: string; auth: { baseUrl: string; userId: string; token: string } }
   | undefined;
 let watchImportPath: string | undefined;
+let watchImportFileDigest: string | undefined;
+let watchImportTargetDigest: string | undefined;
+let watchImportScope: string | undefined;
 const pendingWatchUserId = "00000000000000000000000000000000";
 let watchPlaying = false;
 let watchStoppedAt = 0;
@@ -156,9 +159,13 @@ function selectedWatchServer() {
   const selected = store.value.servers.find(
     (item) => item.id === store.value.activeServerId && item.providerId === "jellyfin",
   );
-  return selected ?? store.value.servers.find(
-    (item) => item.id === watchAuth?.serverId && item.providerId === "jellyfin",
-  ) ?? store.value.servers.find((item) => item.providerId === "jellyfin");
+  return (
+    selected ??
+    store.value.servers.find(
+      (item) => item.id === watchAuth?.serverId && item.providerId === "jellyfin",
+    ) ??
+    store.value.servers.find((item) => item.providerId === "jellyfin")
+  );
 }
 function watchServer() {
   const server = selectedWatchServer();
@@ -653,8 +660,7 @@ function closeAllServerViews() {
 }
 function activateView(entry: ServerViewState) {
   if (activeView !== entry) {
-    if (activeView && isRegistered(activeView))
-      window.contentView.removeChildView(activeView.view);
+    if (activeView && isRegistered(activeView)) window.contentView.removeChildView(activeView.view);
     activeView = entry;
     window.contentView.addChildView(entry.view);
   }
@@ -667,7 +673,10 @@ async function openServer(id: string, destination?: string) {
   const server = store.value.servers.find((s) => s.id === id);
   if (!server) throw new UserFacingError("serverMissing");
   let existing = serverViews.get(id);
-  if (existing && (existing.server.url !== server.url || existing.server.providerId !== server.providerId)) {
+  if (
+    existing &&
+    (existing.server.url !== server.url || existing.server.providerId !== server.providerId)
+  ) {
     closeServerView(id);
     existing = undefined;
   }
@@ -1083,6 +1092,23 @@ function setupIPC() {
     await publishWatch(snapshot, userId);
     return snapshot;
   });
+  handle("app:watch-statistics-link-media", async (input) => {
+    const parsed = z
+      .object({ fromItemId: z.string().min(1), toItemId: z.string().min(1) })
+      .parse(input);
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    if (!userId) throw new Error("请先在「服务」中登录 Jellyfin");
+    const snapshot = await watchStatistics.linkWatchMedia(
+      server.id,
+      userId,
+      parsed.fromItemId,
+      parsed.toItemId,
+    );
+    await publishWatch(snapshot, userId);
+    return (await watchStatistics.getView(server.id, userId)) ?? snapshot;
+  });
   handle("app:watch-statistics-status", () => watchStatus());
   const batchReviewSchema = z.object({
     action: z.literal("batch"),
@@ -1172,32 +1198,55 @@ function setupIPC() {
   handle("app:watch-statistics-import-preview", async () => {
     const chosen = await dialog.showOpenDialog(window!, {
       properties: ["openFile"],
-      filters: [{ name: "观影统计备份", extensions: ["json"] }],
+      filters: [{ name: "观影统计档案与备份", extensions: ["json", "backup"] }],
     });
     if (chosen.canceled || !chosen.filePaths[0]) return null;
     watchImportPath = chosen.filePaths[0];
-    return watchStatistics.previewImport(watchImportPath);
+    const server = watchServer();
+    await watchIdentity().catch(() => {});
+    const userId = await watchUserId(server.id);
+    const targetUserId = userId ?? pendingWatchUserId;
+    const preview = await watchStatistics.previewImport(watchImportPath, server.id, targetUserId);
+    watchImportFileDigest = createHash("sha256")
+      .update(readFileSync(watchImportPath))
+      .digest("hex");
+    const target = await watchStatistics.getView(server.id, targetUserId);
+    watchImportTargetDigest = createHash("sha256").update(JSON.stringify(target)).digest("hex");
+    watchImportScope = `${server.id}:${targetUserId}`;
+    return preview;
   });
   handle("app:watch-statistics-import", async (input) => {
-    z.literal("replace").parse(input);
+    const mode = z.enum(["replace", "merge"]).parse(input);
     if (!watchImportPath) throw new Error("请先选择导入文件");
     const server = watchServer();
     await watchIdentity().catch(() => {});
     const userId = await watchUserId(server.id);
     const targetUserId = userId ?? pendingWatchUserId;
     const path = watchImportPath;
-    watchImportPath = undefined;
+    if (`${server.id}:${targetUserId}` !== watchImportScope)
+      throw new Error("当前服务或用户在预览后发生变化，请重新选择并预览");
+    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== watchImportFileDigest)
+      throw new Error("导入文件在预览后发生变化，请重新选择并预览");
+    const target = await watchStatistics.getView(server.id, targetUserId);
+    if (
+      createHash("sha256").update(JSON.stringify(target)).digest("hex") !== watchImportTargetDigest
+    )
+      throw new Error("当前观影档案在预览后发生变化，请重新预览");
     const previous = watchRefresh;
     const task =
       previous
         ?.catch(() => {})
-        .then(() => watchStatistics.importData(server.id, targetUserId, path)) ??
-      watchStatistics.importData(server.id, targetUserId, path);
+        .then(() => watchStatistics.importData(server.id, targetUserId, path, mode)) ??
+      watchStatistics.importData(server.id, targetUserId, path, mode);
     watchRefresh = task;
     watchRefreshMode = "import";
     let snapshot: WatchStatisticsSnapshot;
     try {
       snapshot = await task;
+      watchImportPath = undefined;
+      watchImportFileDigest = undefined;
+      watchImportTargetDigest = undefined;
+      watchImportScope = undefined;
     } finally {
       if (watchRefresh === task) {
         watchRefresh = undefined;
@@ -1336,7 +1385,12 @@ function setupIPC() {
       },
     );
     const opened = serverViews.get(savedServer.id);
-    if (opened && (server.credentials !== undefined || opened.server.url !== savedServer.url || opened.server.providerId !== savedServer.providerId))
+    if (
+      opened &&
+      (server.credentials !== undefined ||
+        opened.server.url !== savedServer.url ||
+        opened.server.providerId !== savedServer.providerId)
+    )
       closeServerView(savedServer.id);
     publish();
     return state();
@@ -1690,7 +1744,8 @@ function setupIPC() {
     const frameUrl = frame.url;
     const saved = await credentials.get(server);
     // A pending keychain read must not deliver secrets to a newly navigated page.
-    if (!entry || !isRegistered(entry) || frame.isDestroyed() || frame.url !== frameUrl) return null;
+    if (!entry || !isRegistered(entry) || frame.isDestroyed() || frame.url !== frameUrl)
+      return null;
     return saved;
   });
   ipcMain.handle("server:play", async (event, input) => {
@@ -1721,7 +1776,9 @@ function setupIPC() {
     const server = entry.server;
     playbackServer = server;
     const browserSession = entry.view.webContents.session;
-    const fetch = guardServerAccess(browserFetcher(browserSession, entry.view.webContents.getURL()));
+    const fetch = guardServerAccess(
+      browserFetcher(browserSession, entry.view.webContents.getURL()),
+    );
     const fetcher = async (url: string, init?: RequestInit) => {
       const response = await fetch(url, init);
       if (!response.ok) {

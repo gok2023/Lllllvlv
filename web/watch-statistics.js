@@ -69,6 +69,7 @@
       });
     return {
       getWatchStatistics: () => call("getWatchStatistics"),
+      linkWatchMedia: (input) => call("linkWatchMedia", input),
       correctWatchLibrary: (input) => call("correctWatchLibrary", input),
       reviewWatchStatistics: (input) => call("reviewWatchStatistics", input),
       previewWatchStatisticsReview: (input) => call("previewWatchStatisticsReview", input),
@@ -80,7 +81,7 @@
       saveWatchStatisticsSettings: (settings) => call("saveWatchStatisticsSettings", settings),
       exportWatchStatistics: () => call("exportWatchStatistics"),
       previewWatchStatisticsImport: () => call("previewWatchStatisticsImport"),
-      importWatchStatistics: () => call("importWatchStatistics", "replace"),
+      importWatchStatistics: (mode) => call("importWatchStatistics", mode),
     };
   })();
   const state = {
@@ -1942,34 +1943,101 @@
       $("refreshStatus").textContent = `导出失败：${error?.message || String(error)}`;
     }
   };
+  let importPreview = null;
   $("importBtn").onclick = async () => {
     try {
       const preview = await api.previewWatchStatisticsImport();
       if (!preview) return;
+      importPreview = preview;
       const count = (value) => num(value?.length ?? value);
       const range =
         preview.earliestAt && preview.latestAt
           ? `${dayKey(new Date(preview.earliestAt))} 至 ${dayKey(new Date(preview.latestAt))}`
           : "无可确定的播放日期";
       $("importPreviewText").textContent =
-        `播放记录 ${count(preview.records)} 条 · 历史补录 ${count(preview.backfill)} 条 · 作品 ${count(preview.media)} 项 · 时间范围 ${range}。导入会替换当前统计数据，程序会先备份原数据。`;
+        `备份版本 ${preview.version} · 播放记录 ${count(preview.records)} 条 · 历史补录 ${count(preview.backfill)} 条 · 作品 ${count(preview.media)} 项 · 确认 ${count(preview.confirmations || 0)} 条 · 待处理 ${count(preview.candidates || 0)} 条 · 媒体库修正 ${count(preview.corrections || 0)} 条 · 人工关联 ${count(preview.identityLinks || 0)} 条 · 时间范围 ${range}。`;
+      const conflicts = count(preview.conflicts || 0);
+      const reconciliation = `预计新增播放记录 ${num(preview.added)} 条 · 重复记录 ${num(preview.duplicates)} 条 · 已有映射 ${num(preview.linked)} 项 · 待关联旧作品 ${num(preview.unlinked)} 项。`;
+      const libraryWarning = num(preview.missingLibraryCorrections)
+        ? `有 ${num(preview.missingLibraryCorrections)} 条媒体库修正引用当前服务不存在的媒体库 ID，导入后需重新同步并人工核对。`
+        : "";
+      $("importConflictText").textContent =
+        reconciliation +
+        libraryWarning +
+        (conflicts
+          ? `与当前档案有 ${conflicts} 处同 ID 内容冲突。合并已禁用；替换将以备份文件为准。操作前会备份当前档案。`
+          : "合并会保留两边的非冲突资产；替换会以备份文件为准。操作前会备份当前档案。");
+      $("importMerge").disabled = conflicts > 0;
       $("importDialog").showModal();
     } catch (error) {
       $("refreshStatus").textContent = `读取导入文件失败：${error?.message || String(error)}`;
     }
   };
-  $("importConfirm").onclick = async () => {
-    const button = $("importConfirm");
+  async function submitImport(mode) {
+    const button = mode === "merge" ? $("importMerge") : $("importConfirm");
     button.disabled = true;
     try {
-      const result = await api.importWatchStatistics();
+      const result = await api.importWatchStatistics(mode);
       if (result) applySnapshot(result, true);
       $("importDialog").close();
-      $("refreshStatus").textContent = "导入完成，已更新观影统计。";
+      $("refreshStatus").textContent =
+        `${mode === "merge" ? "合并" : "替换"}完成，已更新观影统计。${num(importPreview?.missingLibraryCorrections) ? "部分媒体库修正需重新核对。" : ""}`;
+      importPreview = null;
     } catch (error) {
       $("refreshStatus").textContent =
         `导入失败：${error?.message || String(error)}。原有统计仍可查看。`;
       $("importDialog").close();
+    } finally {
+      button.disabled = false;
+    }
+  }
+  $("importConfirm").onclick = () => void submitImport("replace");
+  $("importMerge").onclick = () => void submitImport("merge");
+  $("linkMediaBtn").onclick = () => {
+    const media = state.snapshot?.media || [];
+    const options = media
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+      .map(
+        (item) =>
+          `<option value="${esc(item.id)}">${esc(item.name)} · ${esc(item.type)} · ${esc(item.id)}</option>`,
+      )
+      .join("");
+    $("linkFrom").innerHTML = options;
+    $("linkTo").innerHTML = options;
+    $("linkTo").selectedIndex = Math.min(1, media.length - 1);
+    $("linkError").textContent = "";
+    const updateImpact = () => {
+      const id = $("linkFrom").value;
+      const snapshot = state.snapshot;
+      const affected = [
+        ["播放记录", snapshot?.records?.filter((x) => x.itemId === id).length || 0],
+        ["历史补录", snapshot?.backfill?.filter((x) => x.itemId === id).length || 0],
+        ["确认", snapshot?.confirmations?.filter((x) => x.itemId === id).length || 0],
+        ["待处理", snapshot?.candidates?.filter((x) => x.itemId === id).length || 0],
+      ];
+      $("linkImpact").textContent = affected.map(([name, count]) => `${name} ${count}`).join(" · ");
+      $("linkConfirm").disabled = !id || id === $("linkTo").value;
+    };
+    $("linkFrom").onchange = updateImpact;
+    $("linkTo").onchange = updateImpact;
+    updateImpact();
+    $("linkMediaDialog").showModal();
+  };
+  $("linkCancel").onclick = () => $("linkMediaDialog").close();
+  $("linkConfirm").onclick = async () => {
+    const button = $("linkConfirm");
+    button.disabled = true;
+    try {
+      const result = await api.linkWatchMedia({
+        fromItemId: $("linkFrom").value,
+        toItemId: $("linkTo").value,
+      });
+      if (result) applySnapshot(result, true);
+      $("linkMediaDialog").close();
+      $("refreshStatus").textContent = "作品关联已保存，观影资产已归入目标作品。";
+    } catch (error) {
+      $("linkError").textContent = error?.message || String(error);
     } finally {
       button.disabled = false;
     }

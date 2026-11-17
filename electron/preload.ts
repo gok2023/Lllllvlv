@@ -4,6 +4,7 @@ import type { DesktopAPI, AppState } from "../src/shared/types";
 const api: DesktopAPI = {
   getWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics"),
   correctWatchLibrary: (input) => ipcRenderer.invoke("app:watch-statistics-correct-library", input),
+  linkWatchMedia: (input) => ipcRenderer.invoke("app:watch-statistics-link-media", input),
   reviewWatchStatistics: (input) => ipcRenderer.invoke("app:watch-statistics-review", input),
   previewWatchStatisticsReview: (input) =>
     ipcRenderer.invoke("app:watch-statistics-review-preview", input),

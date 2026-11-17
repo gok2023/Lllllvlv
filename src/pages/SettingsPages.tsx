@@ -521,6 +521,9 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
           case "getWatchStatistics":
             operation = runtime.api.getWatchStatistics();
             break;
+          case "linkWatchMedia":
+            operation = runtime.api.linkWatchMedia(message.args?.[0]);
+            break;
           case "correctWatchLibrary":
             operation = runtime.api.correctWatchLibrary(message.args?.[0]);
             break;
@@ -555,7 +558,7 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
             operation = runtime.api.previewWatchStatisticsImport();
             break;
           case "importWatchStatistics":
-            operation = runtime.api.importWatchStatistics("replace");
+            operation = runtime.api.importWatchStatistics(message.args?.[0]);
             break;
           default:
             return;

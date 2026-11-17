@@ -1446,6 +1446,7 @@
           <button class="soft-btn" id="refreshBtn" type="button">重新同步</button
           ><button class="soft-btn" id="exportBtn" type="button">导出数据</button
           ><button class="soft-btn" id="importBtn" type="button">导入数据</button
+          ><button class="soft-btn" id="linkMediaBtn" type="button">关联旧作品</button
           ><button class="soft-btn" id="printBtn">打印页面</button>
         </div>
       </header>
@@ -1826,6 +1827,7 @@
     <dialog id="importDialog" class="import-dialog">
       <h3>导入观影统计</h3>
       <p id="importPreviewText"></p>
+      <p id="importConflictText" class="hint"></p>
       <div class="import-actions">
         <button
           class="soft-btn"
@@ -1833,7 +1835,25 @@
           onclick="document.getElementById('importDialog').close()"
         >
           取消</button
+        ><button class="soft-btn" id="importMerge" type="button">合并无冲突数据</button
         ><button class="soft-btn" id="importConfirm" type="button">导入并替换</button>
+      </div>
+    </dialog>
+    <dialog id="linkMediaDialog" class="import-dialog library-dialog">
+      <h3>关联旧作品</h3>
+      <p class="hint">
+        仅在确认两项是同一作品时关联。观影资产会立即归入目标作品，关联规则在后续同步中沿用；原始播放记录
+        ID 保持不变。
+      </p>
+      <label for="linkFrom">旧作品</label>
+      <select id="linkFrom"></select>
+      <label for="linkTo">当前作品</label>
+      <select id="linkTo"></select>
+      <p id="linkImpact" class="hint"></p>
+      <p id="linkError" role="alert"></p>
+      <div class="import-actions">
+        <button class="soft-btn" id="linkCancel" type="button">取消</button
+        ><button class="soft-btn" id="linkConfirm" type="button">确认关联</button>
       </div>
     </dialog>
     <dialog id="libraryDialog" class="import-dialog library-dialog">

@@ -54,6 +54,9 @@ export function createDesktopFixture() {
     correctWatchLibrary: vi.fn(async () => {
       throw new Error("No statistics fixture");
     }),
+    linkWatchMedia: vi.fn(async () => {
+      throw new Error("No statistics fixture");
+    }),
     reviewWatchStatistics: vi.fn(async () => {
       throw new Error("No statistics fixture");
     }),

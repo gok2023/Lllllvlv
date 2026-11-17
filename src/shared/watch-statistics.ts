@@ -112,12 +112,24 @@ export interface WatchStatisticsSnapshot {
   confirmations?: WatchConfirmation[];
   candidates?: WatchCandidate[];
   appliedReviewIds?: string[];
+  revokedConfirmationIds?: string[];
+  identityLinks?: Record<string, string>;
 }
 export interface WatchStatisticsImportPreview {
   version: number;
   records: number;
   backfill: number;
   media: number;
+  confirmations?: number;
+  candidates?: number;
+  corrections?: number;
+  identityLinks?: number;
+  conflicts?: number;
+  missingLibraryCorrections?: number;
+  added?: number;
+  duplicates?: number;
+  linked?: number;
+  unlinked?: number;
   earliestAt?: string;
   latestAt?: string;
   exportedAt?: string;

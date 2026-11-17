@@ -228,6 +228,10 @@ export interface DesktopAPI {
     this: void,
     input: { recordId: string; libraryId: string | null; remember: boolean },
   ): Promise<import("./watch-statistics").WatchStatisticsSnapshot>;
+  linkWatchMedia(
+    this: void,
+    input: { fromItemId: string; toItemId: string },
+  ): Promise<import("./watch-statistics").WatchStatisticsSnapshot>;
   reviewWatchStatistics(
     this: void,
     input: import("./watch-statistics").WatchReviewAction,
@@ -261,7 +265,7 @@ export interface DesktopAPI {
   ): Promise<import("./watch-statistics").WatchStatisticsImportPreview | null>;
   importWatchStatistics(
     this: void,
-    mode: "replace",
+    mode: "replace" | "merge",
   ): Promise<import("./watch-statistics").WatchStatisticsSnapshot>;
   exportWatchStatistics(this: void): Promise<string | null>;
   onWatchStatisticsUpdated(

@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, copyFile, unlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile, unlink, rename, readdir } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { join, dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -74,6 +74,19 @@ const providerKeys = (media: WatchMedia) =>
   Object.entries(media.providerIds ?? {})
     .filter(([key, value]) => /^(tmdb|imdb|tvdb)$/i.test(key) && value)
     .map(([key, value]) => `${media.type}:${key.toLowerCase()}:${value.toLowerCase()}`);
+const providerCompatible = (left: WatchMedia, right: WatchMedia) => {
+  const ids = (media: WatchMedia) =>
+    new Map(
+      Object.entries(media.providerIds ?? {})
+        .filter(([key, value]) => /^(tmdb|imdb|tvdb)$/i.test(key) && value)
+        .map(([key, value]) => [key.toLowerCase(), value.toLowerCase()]),
+    );
+  const a = ids(left);
+  const b = ids(right);
+  return [...a].every(([key, value]) => !b.has(key) || b.get(key) === value);
+};
+const eligibleArchiveMedia = (media: WatchMedia, serverId: string) =>
+  !media.sourceId || media.sourceId === serverId || media.id.startsWith("legacy:");
 const optionalText = z.string().optional();
 const mediaSchema = z.object({
   id: z.string(),
@@ -149,6 +162,11 @@ const snapshotSchema = z.object({
   confirmations: z.array(confirmationSchema).optional(),
   candidates: z.array(candidateSchema).optional(),
   appliedReviewIds: z.array(z.string()).optional(),
+  revokedConfirmationIds: z.array(z.string()).optional(),
+  identityLinks: z.record(z.string(), z.string()).optional(),
+  corrections: z
+    .object({ records: z.record(z.string(), z.string()), items: z.record(z.string(), z.string()) })
+    .optional(),
 });
 function planBatch(snapshot: WatchStatisticsSnapshot, input: WatchBatchReviewInput) {
   const ids = [...new Set(input.itemIds)].sort();
@@ -282,7 +300,6 @@ function planBatch(snapshot: WatchStatisticsSnapshot, input: WatchBatchReviewInp
 
 export class WatchStatisticsStore {
   private writes = new Map<string, Promise<WatchStatisticsSnapshot>>();
-  private correctionWrites = new Map<string, Promise<unknown>>();
   private currentSettings = new Map<string, WatchStatisticsSettings>();
   constructor(
     private readonly directory: string,
@@ -309,6 +326,7 @@ export class WatchStatisticsStore {
   async getView(serverId: string, userId: string): Promise<WatchStatisticsSnapshot | null> {
     const snapshot = await this.get(serverId, userId);
     if (!snapshot) return null;
+    if (snapshot.corrections) return snapshot;
     let corrections = {
       records: {} as Record<string, string>,
       items: {} as Record<string, string>,
@@ -320,9 +338,10 @@ export class WatchStatisticsStore {
         items: z.record(z.string(), z.string()),
       });
       const result = schema.safeParse(parsed);
-      if (result.success) corrections = result.data;
-    } catch {
-      /* Missing or malformed corrections leave the original snapshot usable. */
+      if (!result.success) throw new Error("观影修正文件损坏");
+      corrections = result.data;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     return { ...snapshot, corrections };
   }
@@ -333,8 +352,8 @@ export class WatchStatisticsStore {
     libraryId: string | null,
     remember: boolean,
   ) {
-    const path = this.correctionPath(serverId, userId);
-    const prior = this.correctionWrites.get(path) ?? Promise.resolve();
+    const path = this.path(serverId, userId);
+    const prior = this.writes.get(path) ?? Promise.resolve();
     const next = prior
       .catch(() => {})
       .then(async () => {
@@ -344,6 +363,7 @@ export class WatchStatisticsStore {
         if (!record) throw new Error("播放记录不存在");
         if (libraryId !== null && !snapshot.libraries?.some((entry) => entry.id === libraryId))
           throw new Error("媒体库不存在，请重新同步");
+        await this.dailyBackup(path, snapshot);
         const corrections = snapshot.corrections!;
         const key = itemId(record.itemId);
         if (libraryId === null) {
@@ -353,51 +373,110 @@ export class WatchStatisticsStore {
           corrections.records[recordId] = libraryId;
           if (remember) corrections.items[key] = libraryId;
         }
-        await mkdir(dirname(path), { recursive: true });
-        const temporary = `${path}.${randomUUID()}.tmp`;
-        await writeFile(temporary, JSON.stringify(corrections));
-        const { rename } = await import("node:fs/promises");
-        await rename(temporary, path);
+        await this.atomicWrite(
+          this.path(serverId, userId),
+          JSON.stringify({ ...snapshot, corrections }),
+        );
         return { ...snapshot, corrections };
       });
-    this.correctionWrites.set(path, next);
+    this.writes.set(path, next);
     try {
       return await next;
     } finally {
-      if (this.correctionWrites.get(path) === next) this.correctionWrites.delete(path);
+      if (this.writes.get(path) === next) this.writes.delete(path);
     }
   }
   async get(serverId: string, userId: string): Promise<WatchStatisticsSnapshot | null> {
     try {
-      return JSON.parse(
-        await readFile(this.path(serverId, userId), "utf8"),
-      ) as WatchStatisticsSnapshot;
-    } catch {
-      return null;
+      const parsed: unknown = JSON.parse(await readFile(this.path(serverId, userId), "utf8"));
+      const result = snapshotSchema.safeParse(parsed);
+      if (!result.success)
+        throw new Error(`观影档案损坏：${result.error.issues[0]?.path.join(".")}`);
+      return result.data as WatchStatisticsSnapshot;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   }
+  private async atomicWrite(path: string, data: string) {
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, data);
+      await rename(temporary, path);
+    } finally {
+      await unlink(temporary).catch(() => {});
+    }
+  }
+  private async dailyBackup(path: string, snapshot: WatchStatisticsSnapshot | null) {
+    if (!snapshot) return;
+    const backup = `${path}.${new Date().toISOString().slice(0, 10)}.auto.backup`;
+    try {
+      await writeFile(backup, JSON.stringify(snapshot), { flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const files = (await readdir(dirname(path)))
+      .filter(
+        (name) =>
+          name.startsWith(`${path.split(/[\\/]/).at(-1)}.`) && name.endsWith(".auto.backup"),
+      )
+      .sort()
+      .reverse();
+    for (const stale of files.slice(5)) await unlink(join(dirname(path), stale)).catch(() => {});
+  }
   async exportData(serverId: string, userId: string, path: string): Promise<void> {
+    await this.writes.get(this.path(serverId, userId))?.catch(() => {});
     const snapshot = await this.getView(serverId, userId);
     if (!snapshot) throw new Error("尚无可导出的观影统计数据");
-    await writeFile(
+    const payload = JSON.stringify(snapshot);
+    await this.atomicWrite(
       path,
-      JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), snapshot }),
+      JSON.stringify({
+        version: 3,
+        exportedAt: new Date().toISOString(),
+        snapshot,
+        sha256: createHash("sha256").update(payload).digest("hex"),
+      }),
     );
   }
   private async readImport(path: string) {
     const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
     if (!parsed || typeof parsed !== "object") throw new Error("导入文件格式无效");
-    const archive = parsed as { version?: unknown; exportedAt?: unknown; snapshot?: unknown };
+    const input = parsed as {
+      version?: unknown;
+      exportedAt?: unknown;
+      snapshot?: unknown;
+      serverId?: unknown;
+    };
+    const archive =
+      input.version === undefined && typeof input.serverId === "string"
+        ? { version: 2, snapshot: input, exportedAt: undefined }
+        : input;
     if (
-      ![1, 2].includes(Number(archive.version)) ||
+      ![1, 2, 3].includes(archive.version as number) ||
       !archive.snapshot ||
       typeof archive.snapshot !== "object"
     )
       throw new Error("不支持的统计文件版本");
+    if (
+      archive.version === 3 &&
+      (typeof (parsed as { sha256?: unknown }).sha256 !== "string" ||
+        createHash("sha256").update(JSON.stringify(archive.snapshot)).digest("hex") !==
+          (parsed as { sha256: string }).sha256)
+    )
+      throw new Error("统计文件完整性校验失败");
     const result = snapshotSchema.safeParse(archive.snapshot);
     if (!result.success)
       throw new Error(`统计文件内容无效：${result.error.issues[0]?.path.join(".") ?? "未知字段"}`);
     const snapshot = result.data as WatchStatisticsSnapshot;
+    for (const [kind, ids] of [
+      ["media", snapshot.media.map((entry) => entry.id)],
+      ["record", snapshot.records.map((entry) => entry.id)],
+      ["backfill", snapshot.backfill.map((entry) => entry.itemId)],
+      ["confirmation", (snapshot.confirmations ?? []).map((entry) => entry.id)],
+      ["candidate", (snapshot.candidates ?? []).map((entry) => entry.itemId)],
+    ] as const)
+      if (new Set(ids).size !== ids.length) throw new Error(`统计文件${kind}含重复身份`);
     const corrections = z
       .object({
         records: z.record(z.string(), z.string()),
@@ -405,120 +484,414 @@ export class WatchStatisticsStore {
       })
       .safeParse((archive.snapshot as WatchStatisticsSnapshot).corrections);
     if (corrections.success) snapshot.corrections = corrections.data;
+    else if (archive.version === 3 || "corrections" in archive.snapshot)
+      throw new Error("统计文件修正数据无效");
     return {
       snapshot,
+      version: Number(archive.version),
       exportedAt: typeof archive.exportedAt === "string" ? archive.exportedAt : undefined,
     };
   }
-  async previewImport(path: string): Promise<WatchStatisticsImportPreview> {
-    const { snapshot, exportedAt } = await this.readImport(path);
+  async previewImport(
+    path: string,
+    serverId?: string,
+    userId?: string,
+  ): Promise<WatchStatisticsImportPreview> {
+    const { snapshot, exportedAt, version } = await this.readImport(path);
     const dates = snapshot.records.map((r) => r.startAt).sort();
+    const current = serverId && userId ? await this.getView(serverId, userId) : null;
+    const normalized =
+      serverId && userId
+        ? this.normalizeImport(snapshot, serverId, userId, current, "merge")
+        : snapshot;
+    const conflicts = current ? this.mergeConflicts(current, normalized).length : 0;
+    const existingRecords = new Set(current?.records.map((record) => record.id) ?? []);
+    const targetLibraries = new Set(current?.libraries?.map((library) => library.id) ?? []);
+    const correctionValues = [
+      ...Object.values(normalized.corrections?.records ?? {}),
+      ...Object.values(normalized.corrections?.items ?? {}),
+    ];
+    const linked = Object.keys(normalized.identityLinks ?? {}).length;
     return {
-      version: 2,
+      version,
       records: snapshot.records.length,
       backfill: snapshot.backfill.length,
       media: snapshot.media.length,
       earliestAt: dates[0],
       latestAt: dates.at(-1),
       exportedAt,
+      confirmations: snapshot.confirmations?.length ?? 0,
+      candidates: snapshot.candidates?.length ?? 0,
+      corrections:
+        Object.keys(snapshot.corrections?.records ?? {}).length +
+        Object.keys(snapshot.corrections?.items ?? {}).length,
+      identityLinks: Object.keys(snapshot.identityLinks ?? {}).length,
+      conflicts,
+      missingLibraryCorrections: current
+        ? correctionValues.filter((id) => !targetLibraries.has(id)).length
+        : 0,
+      added: normalized.records.filter((record) => !existingRecords.has(record.id)).length,
+      duplicates: normalized.records.filter((record) => existingRecords.has(record.id)).length,
+      linked,
+      unlinked: normalized.media.filter(
+        (media) => media.id.startsWith("legacy:") && !normalized.identityLinks?.[media.id],
+      ).length,
     };
+  }
+  private mergeConflicts(current: WatchStatisticsSnapshot, incoming: WatchStatisticsSnapshot) {
+    const conflicts: string[] = [];
+    const check = <T extends { id: string }>(kind: string, a: T[], b: T[]) => {
+      const known = new Map(a.map((entry) => [entry.id, entry]));
+      for (const entry of b) {
+        const prior = known.get(entry.id);
+        if (prior && JSON.stringify(prior) !== JSON.stringify(entry))
+          conflicts.push(`${kind}:${entry.id}`);
+      }
+    };
+    check("record", current.records, incoming.records);
+    check("media", current.media, incoming.media);
+    check("confirmation", current.confirmations ?? [], incoming.confirmations ?? []);
+    const keyed = <T>(kind: string, a: T[], b: T[], key: (value: T) => string) => {
+      const known = new Map(a.map((value) => [key(value), value]));
+      for (const value of b) {
+        const prior = known.get(key(value));
+        if (prior && JSON.stringify(prior) !== JSON.stringify(value))
+          conflicts.push(`${kind}:${key(value)}`);
+      }
+    };
+    keyed("backfill", current.backfill, incoming.backfill, (value) => value.itemId);
+    keyed(
+      "candidate",
+      current.candidates ?? [],
+      incoming.candidates ?? [],
+      (value) => value.itemId,
+    );
+    if (JSON.stringify(current.settings) !== JSON.stringify(incoming.settings))
+      conflicts.push("settings");
+    for (const [key, value] of Object.entries(incoming.identityLinks ?? {}))
+      if (current.identityLinks?.[key] && current.identityLinks[key] !== value)
+        conflicts.push(`identity:${key}`);
+    for (const confirmation of incoming.confirmations ?? [])
+      if (
+        confirmation.source === "initial" &&
+        (current.confirmations ?? []).some(
+          (other) =>
+            other.source === "initial" &&
+            other.itemId === confirmation.itemId &&
+            other.id !== confirmation.id,
+        )
+      )
+        conflicts.push(`initial:${confirmation.itemId}`);
+    for (const id of incoming.confirmations?.map((entry) => entry.id) ?? [])
+      if (current.revokedConfirmationIds?.includes(id)) conflicts.push(`revoked:${id}`);
+    for (const id of current.confirmations?.map((entry) => entry.id) ?? [])
+      if (incoming.revokedConfirmationIds?.includes(id)) conflicts.push(`revoked:${id}`);
+    for (const kind of ["records", "items"] as const)
+      for (const [key, value] of Object.entries(incoming.corrections?.[kind] ?? {}))
+        if (current.corrections?.[kind][key] && current.corrections[kind][key] !== value)
+          conflicts.push(`correction:${kind}:${key}`);
+    return conflicts;
+  }
+  private normalizeImport(
+    snapshot: WatchStatisticsSnapshot,
+    serverId: string,
+    userId: string,
+    current: WatchStatisticsSnapshot | null,
+    mode: "replace" | "merge",
+  ): WatchStatisticsSnapshot {
+    const crossServer = snapshot.serverId !== serverId;
+    const mapId = (id: string) => (crossServer ? `legacy:${snapshot.serverId}:${id}` : id);
+    const normalized: WatchStatisticsSnapshot = {
+      ...snapshot,
+      serverId,
+      cursor: undefined,
+      media: snapshot.media.map((media) => ({
+        ...media,
+        id: mapId(media.id),
+        seriesId: media.seriesId ? mapId(media.seriesId) : undefined,
+        sourceId: media.sourceId ?? snapshot.serverId,
+      })),
+      records: snapshot.records.map((record) => ({
+        ...record,
+        itemId: mapId(record.itemId),
+        userId,
+      })),
+      backfill: snapshot.backfill.map((entry) => ({ ...entry, itemId: mapId(entry.itemId) })),
+      confirmations: snapshot.confirmations?.map((entry) => ({
+        ...entry,
+        itemId: mapId(entry.itemId),
+      })),
+      candidates: snapshot.candidates?.map((entry) => ({ ...entry, itemId: mapId(entry.itemId) })),
+      corrections: snapshot.corrections && {
+        records: snapshot.corrections.records,
+        items: Object.fromEntries(
+          Object.entries(snapshot.corrections.items).map(([id, library]) => [mapId(id), library]),
+        ),
+      },
+      identityLinks:
+        snapshot.identityLinks &&
+        Object.fromEntries(
+          Object.entries(snapshot.identityLinks).map(([from, to]) => [mapId(from), mapId(to)]),
+        ),
+      refreshedAt: new Date().toISOString(),
+    };
+    if (mode === "merge" && current && crossServer) {
+      const links = new Map<string, string>();
+      for (const old of normalized.media) {
+        const keys = providerKeys(old);
+        if (!keys.length) continue;
+        const matches = current.media.filter(
+          (candidate) =>
+            candidate.sourceId === serverId &&
+            candidate.type === old.type &&
+            keys.some((key) => providerKeys(candidate).includes(key)) &&
+            providerCompatible(old, candidate),
+        );
+        if (matches.length === 1) links.set(old.id, matches[0].id);
+      }
+      for (const old of normalized.media) {
+        if (
+          old.type !== "Episode" ||
+          links.has(old.id) ||
+          !old.seriesId ||
+          old.seasonNumber === undefined ||
+          old.episodeNumber === undefined
+        )
+          continue;
+        const mappedSeries = links.get(old.seriesId);
+        if (!mappedSeries) continue;
+        const matches = current.media.filter(
+          (candidate) =>
+            candidate.type === "Episode" &&
+            candidate.sourceId === serverId &&
+            candidate.seriesId === mappedSeries &&
+            candidate.seasonNumber === old.seasonNumber &&
+            candidate.episodeNumber === old.episodeNumber &&
+            providerCompatible(old, candidate),
+        );
+        if (matches.length === 1) links.set(old.id, matches[0].id);
+      }
+      const targets = [...links.values()];
+      for (const target of targets)
+        if (targets.filter((id) => id === target).length > 1)
+          for (const [source, destination] of links)
+            if (destination === target) links.delete(source);
+      const linked = (id: string) => links.get(id) ?? id;
+      normalized.records = normalized.records.map((record) => ({
+        ...record,
+        itemId: linked(record.itemId),
+      }));
+      normalized.backfill = normalized.backfill.map((entry) => ({
+        ...entry,
+        itemId: linked(entry.itemId),
+      }));
+      normalized.confirmations = normalized.confirmations?.map((entry) => ({
+        ...entry,
+        itemId: linked(entry.itemId),
+      }));
+      normalized.candidates = normalized.candidates?.map((entry) => ({
+        ...entry,
+        itemId: linked(entry.itemId),
+      }));
+      normalized.corrections = normalized.corrections && {
+        ...normalized.corrections,
+        items: Object.fromEntries(
+          Object.entries(normalized.corrections.items).map(([id, library]) => [
+            linked(id),
+            library,
+          ]),
+        ),
+      };
+      normalized.identityLinks = { ...normalized.identityLinks, ...Object.fromEntries(links) };
+    }
+    return normalized;
   }
   async importData(
     serverId: string,
     userId: string,
     path: string,
+    mode: "replace" | "merge" = "replace",
   ): Promise<WatchStatisticsSnapshot> {
     const { snapshot } = await this.readImport(path);
     const destination = this.path(serverId, userId);
     await mkdir(dirname(destination), { recursive: true });
+    const previous = this.writes.get(destination) ?? Promise.resolve();
+    const next = previous
+      .catch(() => {})
+      .then(async () => {
+        const current = await this.getView(serverId, userId);
+        const normalized = this.normalizeImport(snapshot, serverId, userId, current, mode);
+        if (mode === "merge" && current) {
+          const conflicts = this.mergeConflicts(current, normalized);
+          if (conflicts.length)
+            throw new Error(`合并冲突 (${conflicts.length})：${conflicts.slice(0, 3).join(", ")}`);
+        }
+        const imported =
+          mode === "merge" && current ? this.mergeSnapshots(current, normalized) : normalized;
+        const oldBytes = current ? await readFile(destination) : null;
+        if (current) {
+          const backup = `${destination}.${new Date().toISOString().replace(/[:.]/g, "-")}.${randomUUID()}.backup`;
+          await writeFile(backup, JSON.stringify(current));
+        }
+        try {
+          await this.atomicWrite(destination, JSON.stringify(imported));
+        } catch (error) {
+          if (oldBytes) await this.atomicWrite(destination, oldBytes.toString("utf8"));
+          else await unlink(destination).catch(() => {});
+          throw error;
+        }
+        this.currentSettings.delete(destination);
+        const files = (await readdir(dirname(destination)))
+          .filter(
+            (name) =>
+              name.startsWith(`${serverId}-${itemId(userId)}.json.`) &&
+              name.endsWith(".backup") &&
+              !name.endsWith(".auto.backup") &&
+              !name.endsWith(".historical-first-watch.backup"),
+          )
+          .sort()
+          .reverse();
+        for (const stale of files.slice(5))
+          await unlink(join(dirname(destination), stale)).catch(() => {});
+        return imported;
+      });
+    this.writes.set(destination, next);
     try {
-      await copyFile(destination, `${destination}.${Date.now()}.backup`);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return await next;
+    } finally {
+      if (this.writes.get(destination) === next) this.writes.delete(destination);
     }
-    const imported: WatchStatisticsSnapshot = {
-      ...snapshot,
-      serverId,
+  }
+  private mergeSnapshots(
+    current: WatchStatisticsSnapshot,
+    incoming: WatchStatisticsSnapshot,
+  ): WatchStatisticsSnapshot {
+    const union = <T>(left: T[], right: T[], key: (value: T) => string) => [
+      ...new Map([...left, ...right].map((value) => [key(value), value])).values(),
+    ];
+    const revokedConfirmationIds = [
+      ...new Set([
+        ...(current.revokedConfirmationIds ?? []),
+        ...(incoming.revokedConfirmationIds ?? []),
+      ]),
+    ];
+    return {
+      ...current,
       cursor: undefined,
-      records: snapshot.records.map((r) => ({ ...r, userId })),
       refreshedAt: new Date().toISOString(),
+      media: union(incoming.media, current.media, (value) => value.id),
+      records: union(incoming.records, current.records, (value) => value.id),
+      backfill: union(incoming.backfill, current.backfill, (value) => value.itemId),
+      confirmations: union(
+        incoming.confirmations ?? [],
+        current.confirmations ?? [],
+        (value) => value.id,
+      ).filter((value) => !revokedConfirmationIds.includes(value.id)),
+      candidates: union(
+        incoming.candidates ?? [],
+        current.candidates ?? [],
+        (value) => value.itemId,
+      ),
+      revokedConfirmationIds,
+      appliedReviewIds: [
+        ...new Set([...(current.appliedReviewIds ?? []), ...(incoming.appliedReviewIds ?? [])]),
+      ],
+      corrections: {
+        records: { ...incoming.corrections?.records, ...current.corrections?.records },
+        items: { ...incoming.corrections?.items, ...current.corrections?.items },
+      },
+      identityLinks: { ...incoming.identityLinks, ...current.identityLinks },
     };
-    this.currentSettings.delete(this.path(serverId, userId));
-    await this.save(serverId, userId, imported);
-    if (snapshot.corrections) {
-      const correctionsPath = this.correctionPath(serverId, userId);
-      try {
-        await copyFile(correctionsPath, `${correctionsPath}.${Date.now()}.backup`);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-      await this.writeCorrections(serverId, userId, snapshot.corrections);
+  }
+  async linkWatchMedia(serverId: string, userId: string, fromItemId: string, toItemId: string) {
+    const path = this.path(serverId, userId);
+    const previous = this.writes.get(path) ?? Promise.resolve();
+    const next = previous
+      .catch(() => {})
+      .then(async () => {
+        const snapshot = await this.getView(serverId, userId);
+        if (!snapshot) throw new Error("尚无观影统计数据");
+        const from = snapshot.media.find((media) => media.id === fromItemId);
+        const to = snapshot.media.find((media) => media.id === toItemId);
+        if (!from || !to || from.id === to.id || from.type !== to.type)
+          throw new Error("作品关联无效");
+        if (to.sourceId && to.sourceId !== serverId) throw new Error("目标作品必须属于当前服务");
+        if (snapshot.identityLinks?.[fromItemId] && snapshot.identityLinks[fromItemId] !== toItemId)
+          throw new Error("作品已有不同关联");
+        let cursor: string | undefined = toItemId;
+        const seen = new Set<string>();
+        while (cursor) {
+          if (cursor === fromItemId || seen.has(cursor)) throw new Error("作品关联形成循环");
+          seen.add(cursor);
+          cursor = snapshot.identityLinks?.[cursor];
+        }
+        const priorLibrary = snapshot.corrections?.items[fromItemId];
+        const targetLibrary = snapshot.corrections?.items[toItemId];
+        if (priorLibrary && targetLibrary && priorLibrary !== targetLibrary)
+          throw new Error("作品媒体库修正冲突");
+        if (
+          (snapshot.backfill.some((entry) => entry.itemId === fromItemId) &&
+            snapshot.backfill.some((entry) => entry.itemId === toItemId)) ||
+          ((snapshot.confirmations ?? []).some(
+            (entry) => entry.itemId === fromItemId && entry.source === "initial",
+          ) &&
+            (snapshot.confirmations ?? []).some(
+              (entry) => entry.itemId === toItemId && entry.source === "initial",
+            )) ||
+          ((snapshot.candidates ?? []).some((entry) => entry.itemId === fromItemId) &&
+            (snapshot.candidates ?? []).some((entry) => entry.itemId === toItemId))
+        )
+          throw new Error("两部作品已有相互冲突的观影资产，请先人工核对");
+        await this.dailyBackup(path, snapshot);
+        snapshot.identityLinks = { ...snapshot.identityLinks, [fromItemId]: toItemId };
+        for (const [alias, target] of Object.entries(snapshot.identityLinks))
+          if (target === fromItemId) snapshot.identityLinks[alias] = toItemId;
+        snapshot.records = snapshot.records.map((record) =>
+          record.itemId === fromItemId ? { ...record, itemId: toItemId } : record,
+        );
+        snapshot.backfill = snapshot.backfill.map((entry) =>
+          entry.itemId === fromItemId ? { ...entry, itemId: toItemId } : entry,
+        );
+        snapshot.confirmations = snapshot.confirmations?.map((entry) =>
+          entry.itemId === fromItemId ? { ...entry, itemId: toItemId } : entry,
+        );
+        snapshot.candidates = snapshot.candidates?.map((entry) =>
+          entry.itemId === fromItemId ? { ...entry, itemId: toItemId } : entry,
+        );
+        if (snapshot.corrections?.items[fromItemId]) {
+          snapshot.corrections.items[toItemId] = snapshot.corrections.items[fromItemId];
+          delete snapshot.corrections.items[fromItemId];
+        }
+        snapshot.refreshedAt = new Date().toISOString();
+        await this.atomicWrite(path, JSON.stringify(snapshot));
+        return snapshot;
+      });
+    this.writes.set(path, next);
+    try {
+      return await next;
+    } finally {
+      if (this.writes.get(path) === next) this.writes.delete(path);
     }
-    return imported;
   }
   async bindImported(
     serverId: string,
     fromUserId: string,
     toUserId: string,
   ): Promise<WatchStatisticsSnapshot | null> {
-    const imported = await this.get(serverId, fromUserId);
-    if (!imported) return this.get(serverId, toUserId);
-    const existing = await this.get(serverId, toUserId);
-    const destination = this.path(serverId, toUserId);
-    await mkdir(dirname(destination), { recursive: true });
-    if (existing) await copyFile(destination, `${destination}.${Date.now()}.backup`);
-    const merged: WatchStatisticsSnapshot = {
-      ...imported,
-      serverId,
-      cursor: undefined,
-      refreshedAt: new Date().toISOString(),
-      media: [
-        ...new Map([...imported.media, ...(existing?.media ?? [])].map((m) => [m.id, m])).values(),
-      ],
-      records: [
-        ...new Map(
-          [...(existing?.records ?? []), ...imported.records].map((r) => [
-            r.id,
-            { ...r, userId: toUserId },
-          ]),
-        ).values(),
-      ],
-      backfill: [
-        ...new Map(
-          [...(existing?.backfill ?? []), ...imported.backfill].map((b) => [b.itemId, b]),
-        ).values(),
-      ],
-      confirmations: [
-        ...new Map(
-          [...(existing?.confirmations ?? []), ...(imported.confirmations ?? [])].map((c) => [
-            c.id,
-            c,
-          ]),
-        ).values(),
-      ],
-      appliedReviewIds: [
-        ...new Set([...(existing?.appliedReviewIds ?? []), ...(imported.appliedReviewIds ?? [])]),
-      ],
-      candidates: [
-        ...new Map(
-          [...(existing?.candidates ?? []), ...(imported.candidates ?? [])].map((c) => [
-            c.itemId,
-            c,
-          ]),
-        ).values(),
-      ],
-    };
-    const sourceView = await this.getView(serverId, fromUserId);
-    const targetView = await this.getView(serverId, toUserId);
-    await this.writeCorrections(serverId, toUserId, {
-      records: { ...sourceView?.corrections?.records, ...targetView?.corrections?.records },
-      items: { ...sourceView?.corrections?.items, ...targetView?.corrections?.items },
-    });
-    this.currentSettings.delete(this.path(serverId, toUserId));
-    this.currentSettings.delete(this.path(serverId, fromUserId));
-    await this.save(serverId, toUserId, merged);
-    await unlink(this.path(serverId, fromUserId));
-    return merged;
+    if (itemId(fromUserId) === itemId(toUserId)) return this.get(serverId, toUserId);
+    const source = await this.get(serverId, fromUserId);
+    if (!source) return this.get(serverId, toUserId);
+    const archive = `${this.path(serverId, fromUserId)}.${randomUUID()}.bind.tmp`;
+    try {
+      await this.exportData(serverId, fromUserId, archive);
+      const merged = await this.importData(serverId, toUserId, archive, "merge");
+      await unlink(this.path(serverId, fromUserId));
+      this.currentSettings.delete(this.path(serverId, toUserId));
+      this.currentSettings.delete(this.path(serverId, fromUserId));
+      return merged;
+    } finally {
+      await unlink(archive).catch(() => {});
+    }
   }
   private async save(
     serverId: string,
@@ -537,6 +910,12 @@ export class WatchStatisticsStore {
         // the latest committed data instead of writing an older snapshot over it.
         const latest =
           settingsOnly || baseline !== undefined ? await this.get(serverId, userId) : null;
+        if (
+          !settingsOnly &&
+          baseline !== undefined &&
+          JSON.stringify(latest) !== JSON.stringify(baseline)
+        )
+          throw new Error("观影档案已更新，请重新同步");
         const snapshot = settingsOnly && latest ? latest : value;
         if (
           !settingsOnly &&
@@ -612,6 +991,20 @@ export class WatchStatisticsStore {
           snapshot.appliedReviewIds = [
             ...new Set([...(snapshot.appliedReviewIds ?? []), ...(latest.appliedReviewIds ?? [])]),
           ];
+        if (!settingsOnly && latest && baseline) {
+          snapshot.revokedConfirmationIds = [
+            ...new Set([
+              ...(snapshot.revokedConfirmationIds ?? []),
+              ...(latest.revokedConfirmationIds ?? []),
+            ]),
+          ];
+          if (JSON.stringify(latest.corrections) !== JSON.stringify(baseline.corrections))
+            snapshot.corrections = {
+              records: { ...snapshot.corrections?.records, ...latest.corrections?.records },
+              items: { ...snapshot.corrections?.items, ...latest.corrections?.items },
+            };
+        }
+        await this.dailyBackup(path, await this.getView(serverId, userId));
         const temporary = `${path}.${randomUUID()}.tmp`;
         await writeFile(temporary, JSON.stringify(snapshot));
         const { rename } = await import("node:fs/promises");
@@ -642,6 +1035,7 @@ export class WatchStatisticsStore {
       .then(async () => {
         const snapshot = await this.get(serverId, userId);
         if (!snapshot) throw new Error("尚无观影统计数据");
+        await this.dailyBackup(path, await this.getView(serverId, userId));
         if (input.action === "batch" && snapshot.appliedReviewIds?.includes(input.operationId))
           return snapshot;
         const media = new Map(snapshot.media.map((item) => [item.id, item]));
@@ -709,6 +1103,15 @@ export class WatchStatisticsStore {
           }
         }
         snapshot.confirmations = confirmations;
+        const remaining = new Set(confirmations.map((entry) => entry.id));
+        snapshot.revokedConfirmationIds = [
+          ...new Set([
+            ...(snapshot.revokedConfirmationIds ?? []),
+            ...((await this.get(serverId, userId))?.confirmations ?? [])
+              .filter((entry) => !remaining.has(entry.id))
+              .map((entry) => entry.id),
+          ]),
+        ];
         snapshot.candidates = candidates;
         const temporary = `${path}.${randomUUID()}.tmp`;
         await writeFile(temporary, JSON.stringify(snapshot));
@@ -775,6 +1178,8 @@ export class WatchStatisticsStore {
     const views = await request<{ Items: RawItem[] }>(
       `Users/${encodeURIComponent(auth.userId)}/Views`,
     );
+    if (!Array.isArray(views?.Items) || (previous?.libraries?.length && !views.Items.length))
+      throw new Error("Jellyfin 媒体库目录为空或不完整，同步未保存");
     const libraries = new Map(
       (views.Items ?? []).map((item) => [itemId(item.Id), item.Name ?? "未匹配"]),
     );
@@ -796,6 +1201,14 @@ export class WatchStatisticsStore {
           const page = await request<{ Items: RawItem[]; TotalRecordCount?: number }>(
             `Users/${encodeURIComponent(auth.userId)}/Items?${params}`,
           );
+          if (
+            !Array.isArray(page?.Items) ||
+            (page.TotalRecordCount != null &&
+              (!Number.isSafeInteger(page.TotalRecordCount) ||
+                page.TotalRecordCount < 0 ||
+                (page.Items.length === 0 && offset < page.TotalRecordCount)))
+          )
+            throw new Error("Jellyfin 媒体分页响应不完整，同步未保存");
           for (const item of page.Items) {
             raw.push(item);
             itemLibraries.set(itemId(item.Id), libraryId);
@@ -842,9 +1255,12 @@ export class WatchStatisticsStore {
         lastPlayedAt: item.UserData?.LastPlayedDate,
         positionSec: seconds(item.UserData?.PlaybackPositionTicks),
         providerIds: item.ProviderIds,
+        sourceId: serverId,
       };
     };
     const media: WatchMedia[] = raw.map(convertMedia);
+    if (fullScan && previous?.media.length && !media.length)
+      throw new Error("Jellyfin 媒体扫描为空，同步未保存");
     let activities: PlaybackActivity[];
     try {
       const overlap =
@@ -1040,16 +1456,21 @@ export class WatchStatisticsStore {
       for (const key of providerKeys(m))
         newByProvider.set(key, [...(newByProvider.get(key) ?? []), m]);
     const remap = new Map<string, string>();
-    for (const old of oldMedia.filter((m) => m.type !== "Episode" && fullScan)) {
+    for (const old of oldMedia.filter(
+      (m) => m.type !== "Episode" && fullScan && eligibleArchiveMedia(m, serverId),
+    )) {
       const matches = new Set(
         providerKeys(old)
           .flatMap((key) => newByProvider.get(key) ?? [])
+          .filter((candidate) => providerCompatible(old, candidate))
           .map((m) => m.id),
       );
       if (matches.size === 1 && !newMedia.some((m) => m.id === old.id && m.type === old.type))
         remap.set(old.id, [...matches][0]);
     }
-    for (const old of oldMedia.filter((m) => m.type === "Episode" && fullScan)) {
+    for (const old of oldMedia.filter(
+      (m) => m.type === "Episode" && fullScan && eligibleArchiveMedia(m, serverId),
+    )) {
       const seriesId =
         old.seriesId &&
         (remap.get(old.seriesId) ??
@@ -1068,16 +1489,24 @@ export class WatchStatisticsStore {
       for (const item of newMedia.filter((m) => m.type !== "Episode")) {
         const matches = new Set(
           providerKeys(item)
-            .flatMap((key) => oldMedia.filter((old) => providerKeys(old).includes(key)))
+            .flatMap((key) =>
+              oldMedia.filter(
+                (old) =>
+                  eligibleArchiveMedia(old, serverId) &&
+                  providerCompatible(old, item) &&
+                  providerKeys(old).includes(key),
+              ),
+            )
             .map((old) => old.id),
         );
         if (matches.size === 1) remap.set(item.id, [...matches][0]);
       }
       for (const item of newMedia.filter((m) => m.type === "Episode")) {
-        const seriesId = item.seriesId && remap.get(item.seriesId);
+        const seriesId = item.seriesId && (remap.get(item.seriesId) ?? item.seriesId);
         if (!seriesId || item.seasonNumber == null || item.episodeNumber == null) continue;
         const matches = oldMedia.filter(
           (old) =>
+            eligibleArchiveMedia(old, serverId) &&
             old.type === "Episode" &&
             old.seriesId === seriesId &&
             old.seasonNumber === item.seasonNumber &&
@@ -1094,6 +1523,7 @@ export class WatchStatisticsStore {
       const matches = new Set(
         providerKeys(old)
           .flatMap((key) => newByProvider.get(key) ?? [])
+          .filter((candidate) => providerCompatible(old, candidate))
           .map((m) => m.id),
       );
       if (matches.size !== 2 || !matches.has(old.id)) continue;
@@ -1115,17 +1545,51 @@ export class WatchStatisticsStore {
       if (matches.length === 1 && !oldMedia.some((m) => m.id === matches[0].id))
         remap.set(matches[0].id, old.id);
     }
-    if (remap.size) {
-      const view = await this.getView(serverId, auth.userId);
-      if (view?.corrections) {
-        for (const [oldId, newId] of remap) {
-          if (view.corrections.items[oldId] && !view.corrections.items[newId])
-            view.corrections.items[newId] = view.corrections.items[oldId];
-          delete view.corrections.items[oldId];
-        }
-        await this.writeCorrections(serverId, auth.userId, view.corrections);
-      }
+    const sourcesByTarget = new Map<string, string[]>();
+    for (const [from, to] of remap)
+      sourcesByTarget.set(to, [...(sourcesByTarget.get(to) ?? []), from]);
+    for (const sources of sourcesByTarget.values())
+      if (sources.length > 1) for (const source of sources) remap.delete(source);
+    for (const [from, to] of remap) {
+      const bothHaveBaseline =
+        (previous?.backfill ?? []).some((entry) => entry.itemId === from) &&
+        (previous?.backfill ?? []).some((entry) => entry.itemId === to);
+      const bothHaveInitial =
+        (previous?.confirmations ?? []).some(
+          (entry) => entry.itemId === from && entry.source === "initial",
+        ) &&
+        (previous?.confirmations ?? []).some(
+          (entry) => entry.itemId === to && entry.source === "initial",
+        );
+      if (bothHaveBaseline || bothHaveInitial) remap.delete(from);
     }
+    // Keep prior source ItemIds as aliases across repeated library rebuilds.
+    // The archive itself is scoped by server and user; never infer aliases from titles.
+    const identityLinks = { ...(previous?.identityLinks ?? {}) };
+    for (const [from, to] of remap) {
+      for (const [alias, target] of Object.entries(identityLinks))
+        if (target === from) identityLinks[alias] = to;
+      identityLinks[from] = to;
+    }
+    const resolveItemId = (id: string) => {
+      const seen = new Set<string>();
+      while (identityLinks[id] && !seen.has(id)) {
+        seen.add(id);
+        id = identityLinks[id];
+      }
+      return id;
+    };
+    const priorCorrections = (await this.getView(serverId, auth.userId))?.corrections;
+    const corrections = priorCorrections && {
+      records: { ...priorCorrections.records },
+      items: { ...priorCorrections.items },
+    };
+    if (corrections)
+      for (const [from, to] of Object.entries(identityLinks)) {
+        if (corrections.items[from] && !corrections.items[to])
+          corrections.items[to] = corrections.items[from];
+        delete corrections.items[from];
+      }
     for (const old of fullScan ? oldMedia : []) {
       if (newMedia.some((m) => m.id === old.id)) continue;
       if (remap.has(old.id)) mediaById.delete(old.id);
@@ -1152,17 +1616,30 @@ export class WatchStatisticsStore {
             ? `${seriesKey}:${m.seasonNumber}:${m.episodeNumber}`
             : undefined;
       }
-      if (key) canonical.set(m.id, key);
+      if (key) canonical.set(m.id, `${m.sourceId ?? serverId}:${key}`);
     }
     const prior = (previous?.records ?? []).map((r) => ({
       ...r,
-      itemId: remap.get(r.itemId) ?? r.itemId,
+      itemId: resolveItemId(r.itemId),
     }));
+    const priorSource = new Map(
+      (previous?.records ?? []).map((record) => [
+        record.id,
+        previous?.media.find((item) => item.id === record.itemId)?.sourceId ?? serverId,
+      ]),
+    );
     const merged = new Map(prior.map((record) => [record.id, record]));
     for (const incoming of current) {
+      const sameId = merged.get(incoming.id);
+      if (
+        sameId &&
+        priorSource.get(sameId.id) !== serverId &&
+        (sameId.rawDate !== incoming.rawDate || sameId.durationSec !== incoming.durationSec)
+      )
+        throw new Error("跨服务播放记录身份冲突，请先人工核对档案");
       const record = {
         ...incoming,
-        itemId: merged.get(incoming.id)?.itemId ?? remap.get(incoming.itemId) ?? incoming.itemId,
+        itemId: merged.get(incoming.id)?.itemId ?? resolveItemId(incoming.itemId),
       };
       const legacyStart = /(?:Z|[+-]\d\d:\d\d)$/i.test(record.rawDate ?? "")
         ? record.startAt
@@ -1172,6 +1649,8 @@ export class WatchStatisticsStore {
           old.itemId === record.itemId &&
           old.clientName === record.clientName &&
           old.deviceName === record.deviceName &&
+          (priorSource.get(old.id) === serverId ||
+            (old.rawDate === record.rawDate && old.durationSec === record.durationSec)) &&
           (old.sourceKey === record.sourceKey ||
             old.startAt === legacyStart ||
             old.startAt === record.startAt),
@@ -1183,8 +1662,13 @@ export class WatchStatisticsStore {
         for (const old of merged.values()) {
           if (
             canonical.get(old.itemId) === identity &&
+            (!mediaById.get(old.itemId) ||
+              !mediaById.get(record.itemId) ||
+              providerCompatible(mediaById.get(old.itemId)!, mediaById.get(record.itemId)!)) &&
             old.clientName === record.clientName &&
             old.deviceName === record.deviceName &&
+            (priorSource.get(old.id) === serverId ||
+              (old.rawDate === record.rawDate && old.durationSec === record.durationSec)) &&
             Math.abs(Date.parse(old.startAt) - Date.parse(record.startAt)) < 2000
           ) {
             merged.delete(old.id);
@@ -1199,25 +1683,25 @@ export class WatchStatisticsStore {
     );
     const priorBackfill = (previous?.backfill ?? []).map((item) => ({
       ...item,
-      itemId: remap.get(item.itemId) ?? item.itemId,
+      itemId: resolveItemId(item.itemId),
       baselineAt: item.baselineAt ?? previous?.refreshedAt,
     }));
     const backfillKeys = new Set<string>();
     const backfill: typeof priorBackfill = [];
     const addBackfill = (item: (typeof priorBackfill)[number]) => {
-      const key = canonical.get(item.itemId) ?? item.itemId;
-      if (backfillKeys.has(key)) return;
+      const key = item.itemId;
+      if (backfillKeys.has(key)) throw new Error("估算基线身份冲突，请先人工核对档案");
       backfillKeys.add(key);
       backfill.push(item);
     };
     for (const item of priorBackfill) addBackfill(item);
     const confirmations: WatchConfirmation[] = (previous?.confirmations ?? []).map((entry) => ({
       ...entry,
-      itemId: remap.get(entry.itemId) ?? entry.itemId,
+      itemId: resolveItemId(entry.itemId),
     }));
     const candidates: WatchCandidate[] = (previous?.candidates ?? []).map((entry) => ({
       ...entry,
-      itemId: remap.get(entry.itemId) ?? entry.itemId,
+      itemId: resolveItemId(entry.itemId),
     }));
     const knownRecords = new Set(previous?.records.map((entry) => entry.id) ?? []);
     const baselineNow = new Date().toISOString();
@@ -1330,11 +1814,13 @@ export class WatchStatisticsStore {
       confirmations,
       candidates,
       appliedReviewIds: previous?.appliedReviewIds,
+      identityLinks,
+      corrections,
       settings:
         this.currentSettings.get(this.path(serverId, auth.userId)) ??
         previous?.settings ??
         defaults,
-      cursor: new Date().toISOString(),
+      cursor: activities.length ? new Date().toISOString() : previous?.cursor,
     };
     return this.save(serverId, auth.userId, snapshot, false, previous);
   }
