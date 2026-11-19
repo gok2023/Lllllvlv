@@ -42,7 +42,7 @@ React 提供 Freebo 自身的界面，服务器网页由独立的 `WebContentsVi
 
 TanStack Router 管理页面位置，使用 memory history 保持 `file://` 入口稳定。路由切换同时协调原生网页视图；不可取消的原生导航按顺序执行，防止较早的请求覆盖后续跳转。
 
-网页工具栏提供普通重新加载和忽略缓存的强制刷新；两者通过 `app:navigate` 操作当前原生网页视图，并共用加载中与错误恢复状态。
+网页工具栏提供普通重新加载和强制刷新。两者通过 `app:navigate` 操作当前原生网页视图，共用加载中与错误恢复状态。Jellyfin 的 File Transformation 会在原 URL 下返回经过转换的首页分块。仅调用 `reloadIgnoringCache()` 时，网页初始化后按需加载的分块仍可能命中旧的 HTTP 缓存，导致 Home Screen Sections 无法接管首页。强制刷新先清除目标服务器分区的 HTTP 缓存，再重新加载同一视图，保留登录会话和站点数据。
 
 ### 标签页生命周期
 

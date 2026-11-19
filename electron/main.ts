@@ -1619,7 +1619,7 @@ function setupIPC() {
   handle("app:control", async (input) => {
     await playback.control(controlSchema.parse(input));
   });
-  handle("app:navigate", (input) => {
+  handle("app:navigate", async (input) => {
     const action = z
       .enum(["back", "forward", "reload", "forceReload", "stop", "home"])
       .parse(input);
@@ -1633,11 +1633,15 @@ function setupIPC() {
           : providers.get(server.providerId).entryUrl(server, true),
       );
     else if (action === "reload" || action === "forceReload") {
+      if (action === "forceReload") {
+        // Lazy-loaded chunks can still hit the session cache after reloadIgnoringCache().
+        await view.webContents.session.clearCache();
+        if (!isRegistered(entry)) return;
+      }
       entry.webError = undefined;
       entry.webStatus = "loading";
       entry.bootstrapRetries = 0;
-      layout();
-      publish();
+      publishView(entry);
       if (action === "forceReload") view.webContents.reloadIgnoringCache();
       else view.webContents.reload();
     } else if (action === "stop") {
