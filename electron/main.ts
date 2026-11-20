@@ -89,6 +89,8 @@ import { UpdateManager, hasMacUpdateSignature, updateDisabledReason } from "./co
 import { autoUpdater } from "electron-updater";
 import { WatchStatisticsStore } from "./core/watch-statistics";
 import { WatchStatisticsPathLocator } from "./core/watch-statistics-path";
+import { JellyfinPluginManager } from "./core/jellyfin-plugins";
+import { pluginVersion } from "./core/jellyfin-plugin-files";
 import type {
   WatchStatisticsSettings,
   WatchStatisticsSnapshot,
@@ -130,6 +132,85 @@ const store = new SettingsStore(join(userDataPath, "settings.json"), (event) => 
 });
 const windowStateStore = new WindowStateStore(join(userDataPath, "window-state.json"));
 const watchPathLocator = new WatchStatisticsPathLocator(userDataPath);
+const jellyfinPlugins = new JellyfinPluginManager(
+  {
+    resources: join(
+      app.isPackaged ? process.resourcesPath : join(app.getAppPath(), "resources"),
+      "jellyfin-plugins",
+    ),
+    journal: join(userDataPath, "jellyfin-plugins.json"),
+  },
+  (server) => browserFetcher(session.fromPartition(servicePartition(server)), server.url),
+  jellyfinPluginSessionToken,
+  (url) => watchPathLocator.isLocal(url),
+  async (defaultPath) => {
+    if (!isLiveWindow(window)) return undefined;
+    const result = await dialog.showOpenDialog(window, {
+      properties: ["openDirectory"],
+      defaultPath,
+    });
+    return result.canceled ? undefined : result.filePaths[0];
+  },
+  (server) =>
+    store.value.servers.some(
+      (entry) =>
+        entry.id === server.id && entry.url === server.url && entry.providerId === "jellyfin",
+    ),
+  log,
+);
+
+async function jellyfinPluginSessionToken(server: Server, jellyfinId: string) {
+  const expression = `(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("jellyfin_credentials") || "{}");
+      return stored.Servers?.find((entry) => entry.Id === ${JSON.stringify(jellyfinId)})?.AccessToken;
+    } catch { return undefined; }
+  })()`;
+  const readToken = async (contents: BrowserWindow["webContents"]) => {
+    if (contents.isDestroyed() || !credentialOriginMatches(server, contents.getURL()))
+      return undefined;
+    const value: unknown = await contents.executeJavaScript(expression);
+    if (contents.isDestroyed() || !credentialOriginMatches(server, contents.getURL()))
+      return undefined;
+    return z
+      .string()
+      .regex(/^[A-Za-z0-9._~-]{1,4096}$/)
+      .safeParse(value).data;
+  };
+  const active = serverViews.get(server.id)?.view.webContents;
+  if (active) {
+    try {
+      const token = await readToken(active);
+      if (token) return token;
+    } catch {
+      // The tab can close or navigate during this read.
+    }
+  }
+  const hidden = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      partition: servicePartition(server),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  hidden.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  hidden.webContents.on("will-redirect", (event) => event.preventDefault());
+  const timeout = setTimeout(() => {
+    if (!hidden.isDestroyed()) hidden.destroy();
+  }, 6000);
+  try {
+    // Use an inert same-origin response to read the persisted web session without opening the UI.
+    await hidden.loadURL(`${server.url}/System/Info/Public`);
+    return await readToken(hidden.webContents);
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+    if (!hidden.isDestroyed()) hidden.destroy();
+  }
+}
 const watchStatistics = new WatchStatisticsStore(userDataPath, watchPathLocator);
 let watchRefresh: Promise<unknown> | undefined;
 let watchRefreshMode: "full" | "incremental" | "import" | undefined;
@@ -1064,6 +1145,67 @@ function setupIPC() {
       }
     });
   handle("app:state", () => state());
+  const pluginServer = (input: unknown) => {
+    const id = z.uuid().parse(input);
+    const server = store.value.servers.find(
+      (item) => item.id === id && item.providerId === "jellyfin",
+    );
+    if (!server) throw new UserFacingError("serverMissing");
+    return server;
+  };
+  const pluginTarget = z
+    .object({
+      serverId: z.uuid(),
+      pluginId: z.guid().transform((id) => id.toLowerCase()),
+    })
+    .strict();
+  handle("jellyfin-plugins:get", (input) =>
+    jellyfinPlugins.run(pluginServer(input), { type: "get" }),
+  );
+  handle("jellyfin-plugins:choose-directory", (input) =>
+    jellyfinPlugins.run(pluginServer(input), { type: "directory" }),
+  );
+  handle("jellyfin-plugins:install", (input) => {
+    const { serverId, pluginId, useRecommendedConfiguration } = pluginTarget
+      .extend({ useRecommendedConfiguration: z.boolean().optional() })
+      .parse(input);
+    return jellyfinPlugins.run(pluginServer(serverId), {
+      type: "install",
+      pluginId,
+      useRecommendedConfiguration,
+    });
+  });
+  handle("jellyfin-plugins:restart", (input) =>
+    jellyfinPlugins.run(pluginServer(input), { type: "restart" }),
+  );
+  handle("jellyfin-plugins:thorough-get", (input) =>
+    jellyfinPlugins.runThorough(pluginServer(input), { type: "get" }),
+  );
+  handle("jellyfin-plugins:thorough-prepare", (input) => {
+    const selection = pluginTarget.omit({ serverId: true }).extend({ version: pluginVersion });
+    const { serverId, selections } = z
+      .object({
+        serverId: z.uuid(),
+        selections: z
+          .array(selection)
+          .min(1)
+          .max(30)
+          .refine(
+            (items) =>
+              new Set(items.map(({ pluginId, version }) => `${pluginId}/${version}`)).size ===
+              items.length,
+          ),
+      })
+      .strict()
+      .parse(input);
+    return jellyfinPlugins.runThorough(pluginServer(serverId), { type: "prepare", selections });
+  });
+  handle("jellyfin-plugins:thorough-continue", (input) =>
+    jellyfinPlugins.runThorough(pluginServer(input), { type: "continue" }),
+  );
+  handle("jellyfin-plugins:thorough-cancel", (input) =>
+    jellyfinPlugins.runThorough(pluginServer(input), { type: "cancel" }),
+  );
   handle("app:watch-statistics", async () => {
     const server = watchServer();
     await watchIdentity().catch(() => {});
@@ -1599,6 +1741,7 @@ function setupIPC() {
         startupVideoEnabled: z.boolean().optional(),
         startupVideoSoundEnabled: z.boolean().optional(),
         startupVideoVolume: z.number().min(0).max(100).optional(),
+        jellyfinPluginsExpanded: z.boolean().optional(),
       })
       .strict()
       .parse(input);
@@ -2191,6 +2334,15 @@ void app.whenReady().then(async () => {
   buildMenu();
   syncTray();
   setupIPC();
+  if (process.platform === "win32") {
+    for (const server of store.value.servers) {
+      if (server.providerId === "jellyfin") {
+        void jellyfinPlugins.runThorough(server, { type: "get" }).catch(() => {
+          log("Could not resume Jellyfin plugin uninstall");
+        });
+      }
+    }
+  }
   playback.on("state", () => {
     if (playback.state.status === "idle") proxy.clear();
     publish();

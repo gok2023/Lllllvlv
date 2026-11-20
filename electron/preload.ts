@@ -2,6 +2,24 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopAPI, AppState } from "../src/shared/types";
 
 const api: DesktopAPI = {
+  jellyfinPluginsGet: (serverId) => ipcRenderer.invoke("jellyfin-plugins:get", serverId),
+  jellyfinPluginsChooseDirectory: (serverId) =>
+    ipcRenderer.invoke("jellyfin-plugins:choose-directory", serverId),
+  jellyfinPluginsInstall: (serverId, pluginId, useRecommendedConfiguration) =>
+    ipcRenderer.invoke("jellyfin-plugins:install", {
+      serverId,
+      pluginId,
+      useRecommendedConfiguration,
+    }),
+  jellyfinPluginsRestart: (serverId) => ipcRenderer.invoke("jellyfin-plugins:restart", serverId),
+  jellyfinPluginsThoroughGet: (serverId) =>
+    ipcRenderer.invoke("jellyfin-plugins:thorough-get", serverId),
+  jellyfinPluginsThoroughPrepare: (serverId, selections) =>
+    ipcRenderer.invoke("jellyfin-plugins:thorough-prepare", { serverId, selections }),
+  jellyfinPluginsThoroughContinue: (serverId) =>
+    ipcRenderer.invoke("jellyfin-plugins:thorough-continue", serverId),
+  jellyfinPluginsThoroughCancel: (serverId) =>
+    ipcRenderer.invoke("jellyfin-plugins:thorough-cancel", serverId),
   getWatchStatistics: () => ipcRenderer.invoke("app:watch-statistics"),
   correctWatchLibrary: (input) => ipcRenderer.invoke("app:watch-statistics-correct-library", input),
   linkWatchMedia: (input) => ipcRenderer.invoke("app:watch-statistics-link-media", input),

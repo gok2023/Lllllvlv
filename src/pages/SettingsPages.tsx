@@ -14,7 +14,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
@@ -28,11 +28,13 @@ import { ServerManagementRow } from "../components/servers/ServerManagementRow";
 import { BrandLogo, BrandName } from "../components/shared/Brand";
 import { DiagnosticsPanel } from "../components/settings/DiagnosticsPanel";
 import { UpdateSettings } from "../components/settings/UpdateSettings";
+import { JellyfinPluginSettings } from "../components/settings/JellyfinPluginSettings";
 import { useApp } from "../runtime/context";
 import { useAppTranslation } from "../i18n";
 import {
   visualThemeIds,
   visualThemes,
+  resolveVisualTheme,
   resolveVisualBackground,
   backgroundsForTheme,
   elysiumBackgrounds,
@@ -371,7 +373,7 @@ export function GeneralPage() {
           ]}
         />
       </SettingRow>
-      <SettingRow title={t("startupVideo")}>
+      <SettingRow title={t("startupVideo")} divider={false}>
         <div
           className="flex flex-wrap items-center justify-end gap-2 rounded-md border border-dashed p-2"
           onDragOver={(event) => event.preventDefault()}
@@ -415,7 +417,7 @@ export function GeneralPage() {
           </span>
         </div>
       </SettingRow>
-      <SettingRow title={t("startupVideoSound")}>
+      <SettingRow title={t("startupVideoSound")} divider={false}>
         <Switch
           aria-label={t("startupVideoSound")}
           checked={state.settings.startupVideoSoundEnabled}
@@ -459,6 +461,7 @@ export function GeneralPage() {
           onCheckedChange={(checked) => update({ remindOnClose: checked })}
         />
       </SettingRow>
+      <JellyfinPluginSettings />
     </>
   );
 }
@@ -469,28 +472,39 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const { runtime, state } = useApp();
   const serverId = state.watchStatisticsServerId;
-  const syncVisualTheme = () => {
+  const theme = resolveVisualTheme(state.settings.visualTheme);
+  const background = state.settings.visualBackground;
+  const syncVisualTheme = useCallback(() => {
     const selected = resolveVisualBackground(
       "elysium",
-      state.settings.visualBackground,
+      background,
     ) as keyof typeof elysiumBackgrounds;
     const preset = elysiumBackgrounds[selected];
     frame.current?.contentWindow?.postMessage(
       {
         channel: "watch-statistics",
         event: "visual-theme",
-        theme: state.settings.visualTheme === "elysium" ? "elysium" : "original",
-        colors: {
-          contentTint: preset.contentTint,
-          controlTint: preset.controlTint,
-          foreground: preset.foreground,
-          mutedForeground: preset.mutedForeground,
-        },
+        theme,
+        appearance: document.documentElement.classList.contains("dark") ? "dark" : "light",
+        colors:
+          theme === "elysium"
+            ? {
+                contentTint: preset.contentTint,
+                controlTint: preset.controlTint,
+                foreground: preset.foreground,
+                mutedForeground: preset.mutedForeground,
+              }
+            : undefined,
       },
       "*",
     );
-  };
-  useEffect(syncVisualTheme, [state.settings.visualTheme, state.settings.visualBackground]);
+  }, [theme, background]);
+  useEffect(() => {
+    const appearance = new MutationObserver(syncVisualTheme);
+    appearance.observe(document.documentElement, { attributeFilter: ["class"] });
+    syncVisualTheme();
+    return () => appearance.disconnect();
+  }, [syncVisualTheme]);
   useEffect(() => {
     const unsubscribe = runtime.api.onWatchStatisticsUpdated((snapshot) => {
       if (snapshot.serverId !== serverId) return;
@@ -598,7 +612,7 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
         title="观影统计"
         src="./watch-statistics.html"
         onLoad={syncVisualTheme}
-        className="min-h-0 w-full flex-1 rounded-lg border border-border bg-[#090b0e]"
+        className="min-h-0 w-full flex-1 rounded-lg border border-border bg-background"
       />
     </div>
   );

@@ -3,24 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
     <title>观影统计</title>
     <style>
-      :root {
-        --bg: #090b0e;
-        --panel: #101318;
-        --panel2: #151922;
-        --line: #272d36;
-        --line2: #353b45;
-        --text: #f2f0eb;
-        --main: #d9d1c6;
-        --sub: #aab0bb;
-        --muted: #777f8d;
-        --accent: #e1d7c9;
-        --accentSoft: rgba(225, 215, 201, 0.11);
-        --green: #a2b6a0;
-        --red: #c18b85;
-      }
       * {
         box-sizing: border-box;
       }
@@ -31,7 +15,8 @@
         margin: 0;
         background: var(--bg);
         color: var(--sub);
-        font-family: "Segoe UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+        font-family: var(--font-body);
+        line-height: var(--body-leading);
         -webkit-font-smoothing: antialiased;
       }
       body:before {
@@ -50,6 +35,7 @@
         padding: 28px 24px 64px;
       }
       button,
+      input,
       select {
         font: inherit;
       }
@@ -57,6 +43,7 @@
         cursor: pointer;
       }
       button:focus-visible,
+      input:focus-visible,
       select:focus-visible,
       summary:focus-visible {
         outline: 2px solid var(--accent);
@@ -85,15 +72,15 @@
         flex-shrink: 0;
         border: 2px solid var(--accent);
         border-radius: 50%;
-        box-shadow: 0 0 15px #e2d9ce33;
+        box-shadow: 0 0 15px var(--accentSoft);
       }
       .name {
         margin: 0;
         color: var(--text);
-        font-family: "Noto Serif SC", "SimSun", serif;
-        font-size: 25px;
-        letter-spacing: 0.06em;
-        font-weight: 600;
+        font-family: var(--font-heading);
+        font-size: var(--title-size);
+        letter-spacing: var(--heading-tracking);
+        font-weight: var(--heading-weight);
       }
       .subtitle {
         margin-top: 4px;
@@ -128,7 +115,7 @@
         color: var(--text);
       }
       .seg button.active {
-        background: #30343b;
+        background: var(--selected);
         color: var(--text);
       }
       .custom-period {
@@ -197,11 +184,11 @@
         color: var(--muted);
       }
       h2 {
-        font-family: "Noto Serif SC", "SimSun", serif;
-        font-size: 20px;
+        font-family: var(--font-heading);
+        font-size: var(--section-size);
         color: var(--text);
-        font-weight: 600;
-        letter-spacing: 0.035em;
+        font-weight: var(--heading-weight);
+        letter-spacing: var(--heading-tracking);
         margin: 0;
       }
       h3 {
@@ -554,7 +541,7 @@
         border: none;
         border-radius: 2px;
         padding: 0;
-        background: #1b1e24;
+        background: var(--heat-0);
         transition:
           transform 0.12s,
           border-color 0.12s;
@@ -576,13 +563,13 @@
         opacity: 0.25;
       }
       .cal-day.level1 {
-        background: #444955;
+        background: var(--heat-1);
       }
       .cal-day.level2 {
-        background: #757b87;
+        background: var(--heat-2);
       }
       .cal-day.level3 {
-        background: #a4a8ad;
+        background: var(--heat-3);
       }
       .cal-day.level4 {
         background: var(--accent);
@@ -597,6 +584,7 @@
       .legend i {
         display: block;
         width: 11px;
+        min-width: 11px;
         height: 11px;
         border-radius: 2px;
       }
@@ -623,7 +611,7 @@
       }
       .hour-bar {
         width: 100%;
-        background: #636a76;
+        background: var(--chart);
         min-height: 2px;
         border-radius: 2px 2px 0 0;
         transition: background 0.2s;
@@ -645,8 +633,8 @@
       }
       .weekday-cell {
         min-width: 0;
-        background: #0c0e12;
-        border: 1px solid #23272d;
+        background: var(--panel2);
+        border: 1px solid var(--line);
         border-radius: 6px;
         padding: 12px 9px;
       }
@@ -663,7 +651,7 @@
       }
       .weekday-cell .mini {
         height: 3px;
-        background: #252a30;
+        background: var(--track);
         margin-top: 9px;
         border-radius: 8px;
         overflow: hidden;
@@ -671,7 +659,7 @@
       .weekday-cell .mini i {
         display: block;
         height: 100%;
-        background: #999c9f;
+        background: var(--chart);
       }
       .bar-list {
         display: flex;
@@ -698,7 +686,7 @@
         font-size: 12px;
       }
       .bar-track {
-        background: #25282e;
+        background: var(--track);
         height: 7px;
         border-radius: 10px;
         overflow: hidden;
@@ -716,10 +704,10 @@
         transition: background 0.2s;
       }
       .link-row:hover {
-        background: #1b2028;
+        background: var(--hover);
       }
       .link-row.is-picked {
-        border-color: #8e8478;
+        border-color: var(--accent);
         background: var(--accentSoft);
       }
       .series-list {
@@ -729,13 +717,13 @@
       }
       .series-row {
         padding: 12px;
-        background: #0c0e12;
-        border: 1px solid #23272d;
+        background: var(--panel2);
+        border: 1px solid var(--line);
         border-radius: 6px;
         cursor: pointer;
       }
       .series-row:hover {
-        border-color: #555b66;
+        border-color: var(--line2);
       }
       .series-top {
         display: flex;
@@ -762,14 +750,14 @@
       .series-cells i {
         height: 9px;
         border-radius: 2px;
-        background: #292d35;
+        background: var(--track);
         min-width: 0;
       }
       .series-cells i.done {
-        background: #b4b4b4;
+        background: var(--accent);
       }
       .series-cells i.current {
-        background: #dfd2c2;
+        background: var(--series-current);
       }
       .series-bottom {
         color: var(--muted);
@@ -789,14 +777,14 @@
         justify-content: space-between;
         gap: 10px;
         padding: 12px 4px;
-        border-bottom: 1px solid #262b33;
+        border-bottom: 1px solid var(--line);
         cursor: pointer;
       }
       .rank-row:last-child {
         border-bottom: none;
       }
       .rank-row:hover {
-        background: #1b2028;
+        background: var(--hover);
       }
       .rank-index {
         font-size: 11px;
@@ -824,7 +812,7 @@
         border-radius: 6px;
         color: var(--accent);
         background: var(--accentSoft);
-        border: 1px solid #726c63;
+        border: 1px solid var(--line2);
         font-size: 12px;
         padding: 7px 10px;
       }
@@ -849,7 +837,7 @@
         cursor: pointer;
       }
       .check-label input {
-        accent-color: #d9d1c6;
+        accent-color: var(--accent);
       }
       .table-wrap {
         overflow: auto;
@@ -864,14 +852,14 @@
         color: var(--muted);
         text-align: left;
         font-weight: 500;
-        background: #0c0f13;
+        background: var(--panel2);
         border-bottom: 1px solid var(--line);
         padding: 13px 19px;
         white-space: nowrap;
       }
       .activity-table td {
         padding: 15px 19px;
-        border-bottom: 1px solid #262b32;
+        border-bottom: 1px solid var(--line);
         font-size: 12px;
         vertical-align: top;
       }
@@ -879,7 +867,7 @@
         border-bottom: 0;
       }
       .activity-table tr:hover td {
-        background: #161a21;
+        background: var(--hover);
       }
       .activity-table .primary {
         color: var(--text);
@@ -920,7 +908,7 @@
         color: var(--muted);
         font-size: 11px;
         line-height: 1.9;
-        background: #0d1014;
+        background: var(--panel2);
         padding: 12px;
         border: 1px solid var(--line);
         border-radius: 6px;
@@ -1185,7 +1173,7 @@
         border-radius: 4px;
       }
       .series-tabs button.active {
-        background: #30343b;
+        background: var(--selected);
         color: var(--text);
       }
       .paging {
@@ -1197,13 +1185,13 @@
       .paging button {
         font-size: 11px;
         color: var(--sub);
-        background: #161a20;
+        background: var(--panel2);
         border: 1px solid var(--line2);
         border-radius: 5px;
         padding: 7px 10px;
       }
       .paging button:hover:not(:disabled) {
-        background: #252b34;
+        background: var(--hover);
         color: var(--text);
       }
       .paging button:disabled {
@@ -1222,7 +1210,7 @@
         font-size: 10px;
         font-weight: 400;
         color: var(--muted);
-        border: 1px solid #3a414c;
+        border: 1px solid var(--line2);
         padding: 2px 5px;
         border-radius: 4px;
         vertical-align: 1px;
@@ -1272,13 +1260,13 @@
         max-width: min(520px, 90vw);
         border: 1px solid var(--line2);
         border-radius: 10px;
-        background: var(--panel);
+        background: var(--dialog);
         color: var(--sub);
         padding: 24px;
-        box-shadow: 0 20px 60px #0009;
+        box-shadow: 0 20px 60px var(--dialog-shadow);
       }
       .import-dialog::backdrop {
-        background: #000a;
+        background: var(--scrim);
       }
       .import-dialog p {
         font-size: 13px;
@@ -1331,88 +1319,8 @@
       #activityStatus:empty {
         display: none;
       }
-      @media screen {
-        :root[data-visual-theme="elysium"] {
-          --bg: transparent;
-          --panel: var(--elysium-content, rgba(23, 28, 32, 0.86));
-          --panel2: var(--elysium-control, rgba(40, 54, 56, 0.9));
-          --line: rgba(238, 232, 218, 0.3);
-          --line2: rgba(238, 232, 218, 0.42);
-          --text: var(--elysium-foreground, #eee8da);
-          --main: var(--elysium-foreground, #eee8da);
-          --sub: var(--elysium-muted, #d6d5c9);
-          --muted: #b7b9b0;
-          --accent: #df9b7a;
-          --accentSoft: rgba(200, 101, 73, 0.2);
-        }
-        :root[data-visual-theme="elysium"] body {
-          background: transparent;
-        }
-        :root[data-visual-theme="elysium"] .name,
-        :root[data-visual-theme="elysium"] h1,
-        :root[data-visual-theme="elysium"] h2 {
-          font-family: Georgia, "SimSun", serif;
-        }
-        :root[data-visual-theme="elysium"] .panel {
-          background: var(--panel);
-          border-color: var(--line);
-        }
-        :root[data-visual-theme="elysium"] .weekday-cell,
-        :root[data-visual-theme="elysium"] .series-row,
-        :root[data-visual-theme="elysium"] .muted-box {
-          background: var(--panel2);
-          border-color: var(--line);
-        }
-        :root[data-visual-theme="elysium"] .bar-track,
-        :root[data-visual-theme="elysium"] .weekday-cell .mini {
-          background: #eee8da30;
-        }
-        :root[data-visual-theme="elysium"] .weekday-cell .mini i {
-          background: var(--accent);
-        }
-        :root[data-visual-theme="elysium"] .link-row:hover,
-        :root[data-visual-theme="elysium"] .activity-table tr:hover td,
-        :root[data-visual-theme="elysium"] .series-tabs button.active,
-        :root[data-visual-theme="elysium"] .paging button:hover:not(:disabled) {
-          background: var(--accentSoft);
-        }
-        :root[data-visual-theme="elysium"] .activity-table thead th,
-        :root[data-visual-theme="elysium"] .paging button {
-          background: var(--panel2);
-          border-color: var(--line);
-        }
-        :root[data-visual-theme="elysium"] .activity-table td {
-          border-color: var(--line);
-        }
-        :root[data-visual-theme="elysium"] .cal-day {
-          background: #eee8da1f;
-        }
-        :root[data-visual-theme="elysium"] .cal-day.empty {
-          background: transparent;
-        }
-        :root[data-visual-theme="elysium"] .cal-day.level1 {
-          background: #9d7266;
-        }
-        :root[data-visual-theme="elysium"] .cal-day.level2 {
-          background: #bd876e;
-        }
-        :root[data-visual-theme="elysium"] .cal-day.level3 {
-          background: #d7a080;
-        }
-        :root[data-visual-theme="elysium"] .cal-day.level4 {
-          background: #f0bb91;
-        }
-        :root[data-visual-theme="elysium"] .import-dialog {
-          background: #263235f5;
-          border-color: var(--line2);
-          color: var(--text);
-        }
-        :root[data-visual-theme="elysium"] .import-dialog::backdrop {
-          background: #101518b8;
-        }
-      }
     </style>
-    <link rel="stylesheet" href="./elysium-statistics.css" />
+    <link rel="stylesheet" href="./watch-statistics-theme.css" />
   </head>
   <body>
     <main>
@@ -1561,9 +1469,9 @@
               <select id="calendarYear" class="select screen-only" aria-label="日历年份"></select>
             </div>
             <div class="legend">
-              <span>少</span><i style="background: #1b1e24"></i><i style="background: #444955"></i
-              ><i style="background: #757b87"></i><i style="background: #a4a8ad"></i
-              ><i style="background: #e1d7c9"></i><span>多</span>
+              <span>少</span><i class="cal-day"></i><i class="cal-day level1"></i
+              ><i class="cal-day level2"></i><i class="cal-day level3"></i
+              ><i class="cal-day level4"></i><span>多</span>
             </div>
           </div>
           <div class="calendar-scroll">

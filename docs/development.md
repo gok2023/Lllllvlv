@@ -16,6 +16,8 @@ pnpm dev
 
 `pnpm dev` 构建主进程和预加载，启动 Vite 与 Electron。修改 `electron/` 后需重启；React 页面由 Vite 热更新。应用依赖 IPC，连接调试应使用 Electron 的浏览器引擎。
 
+开发服务器优先监听 `127.0.0.1:5173`。如果该端口被占用或系统拒绝绑定，`pnpm dev` 会改用系统分配的本地端口，并在终端显示 Electron 实际连接的地址。
+
 `pnpm start` 先完整构建，再启动本地生产版。单独的 `pnpm dev:web` 和 `pnpm preview` 只服务渲染页面，不能替代 Electron 运行验证。
 
 ## 自定义播放器
@@ -167,6 +169,8 @@ pnpm integration:reset
 ## 打包与发布
 
 `pnpm package` 构建应用并使用 electron-builder 生成当前平台产物，输出至 `release/`。升级机制与支持范围见 [架构文档](architecture.md#构建与升级)。
+
+Jellyfin 插件版本、来源和本机离线包的构建方法见 [Jellyfin 插件目录](jellyfin-plugins.md)。
 
 [GitHub Actions](../.github/workflows/ci.yml) 对外部 fork 的 Pull Request 执行三平台检查；普通分支推送及仓库内的 Pull Request 不重复检查。推送 `v*` 标签后构建安装包并创建草稿 Release，标签须与 `package.json` 版本一致。
 

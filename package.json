@@ -32,6 +32,7 @@
     "integration:reset": "node scripts/integration.mjs reset",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm brand:check",
     "package": "pnpm build && electron-builder --publish never",
+    "jellyfin:import-plugins": "node scripts/jellyfin-plugin-assets.mjs",
     "brand:generate": "uv run scripts/brand/generate.py && pnpm exec electron scripts/brand/render.cjs && uv run scripts/brand/package.py",
     "brand:preview": "vite --config docs/brand/brand-kit/vite.config.ts",
     "tray:generate": "electron scripts/brand/render-tray.cjs",
@@ -135,10 +136,21 @@
         "releaseType": "release"
       }
     ],
+    "afterPack": "./scripts/package-jellyfin-plugins.mjs",
     "extraResources": [
       {
         "from": "resources/tray",
         "to": "tray"
+      },
+      {
+        "from": "resources/jellyfin-plugins",
+        "to": "jellyfin-plugins",
+        "filter": [
+          "catalog.json",
+          "recommended-configurations/File Transformation_3.0.3.0/Jellyfin.Plugin.FileTransformation.xml",
+          "recommended-configurations/Home Screen Sections_3.0.4.0/Jellyfin.Plugin.HomeScreenSections.xml",
+          "recommended-configurations/Media Bar_3.0.2.0/Jellyfin.Plugin.MediaBar.xml"
+        ]
       }
     ]
   },

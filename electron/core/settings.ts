@@ -57,6 +57,7 @@ export const defaultSettings: Settings = {
   startupVideoEnabled: false,
   startupVideoSoundEnabled: false,
   startupVideoVolume: 50,
+  jellyfinPluginsExpanded: false,
 };
 
 const serverSchema = z
@@ -121,6 +122,7 @@ export const settingsSchema = z.object({
   startupVideoEnabled: z.boolean().default(defaultSettings.startupVideoEnabled),
   startupVideoSoundEnabled: z.boolean().default(defaultSettings.startupVideoSoundEnabled),
   startupVideoVolume: z.number().min(0).max(100).default(defaultSettings.startupVideoVolume),
+  jellyfinPluginsExpanded: z.boolean().default(defaultSettings.jellyfinPluginsExpanded),
   startupVideoName: z.string().optional(),
   startupVideoFile: z
     .string()

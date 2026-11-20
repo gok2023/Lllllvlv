@@ -12,11 +12,14 @@ let container: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -42,6 +45,7 @@ it("updates background preferences and disables the reminder control when backgr
             {
               value: {
                 state: fixture.state(),
+                runtime: { api: fixture.api },
                 update,
                 isPending: () => false,
               } as unknown as AppContextValue,
@@ -78,6 +82,7 @@ it("prevents repeated changes while a setting is being saved", async () => {
           {
             value: {
               state: fixture.state(),
+              runtime: { api: fixture.api },
               update,
               isPending: () => true,
             } as unknown as AppContextValue,

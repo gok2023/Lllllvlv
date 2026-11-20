@@ -7,8 +7,12 @@
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent || event.data?.channel !== "watch-statistics") return;
       if (event.data.event === "visual-theme") {
-        if (event.data.theme !== "elysium" && event.data.theme !== "original") return;
-        document.documentElement.dataset.visualTheme = event.data.theme;
+        const { theme, appearance, colors } = event.data;
+        if (!["original", "slate", "elysium"].includes(theme)) return;
+        if (appearance !== "light" && appearance !== "dark") return;
+        const root = document.documentElement;
+        root.dataset.visualTheme = theme;
+        root.dataset.appearance = appearance;
         const allowed = {
           contentTint: "--elysium-content",
           controlTint: "--elysium-control",
@@ -16,14 +20,14 @@
           mutedForeground: "--elysium-muted",
         };
         for (const [key, variable] of Object.entries(allowed)) {
-          const value = event.data.colors?.[key];
+          const value = colors?.[key];
           if (
-            event.data.theme === "elysium" &&
+            theme === "elysium" &&
             typeof value === "string" &&
             /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)
           )
-            document.documentElement.style.setProperty(variable, value);
-          else document.documentElement.style.removeProperty(variable);
+            root.style.setProperty(variable, value);
+          else root.style.removeProperty(variable);
         }
         return;
       }

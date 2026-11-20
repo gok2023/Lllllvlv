@@ -21,6 +21,7 @@ export type SettingsPatch = Partial<
     | "startupVideoEnabled"
     | "startupVideoSoundEnabled"
     | "startupVideoVolume"
+    | "jellyfinPluginsExpanded"
   >
 >;
 export function formatTime(value: number) {

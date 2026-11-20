@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PluginConfiguration>
+  <Enabled>Enabled</Enabled>
+  <AllowUnpinnedRefs>false</AllowUnpinnedRefs>
+  <UseAvatarsFile>false</UseAvatarsFile>
+  <WebConfig>
+    <ShuffleInterval>-1</ShuffleInterval>
+    <RetryInterval>-1</RetryInterval>
+    <MinSwipeDistance>-1</MinSwipeDistance>
+    <LoadingCheckInterval>-1</LoadingCheckInterval>
+    <MaxPlotLength>-1</MaxPlotLength>
+    <MaxMovies>-1</MaxMovies>
+    <MaxTvShows>-1</MaxTvShows>
+    <MaxItems>-1</MaxItems>
+    <PreloadCount>-1</PreloadCount>
+    <FadeTransitionDuration>-1</FadeTransitionDuration>
+    <SlideAnimationEnabled>true</SlideAnimationEnabled>
+    <SyncPageBackdrop>false</SyncPageBackdrop>
+    <EnableTrailers>false</EnableTrailers>
+  </WebConfig>
+</PluginConfiguration>

@@ -97,6 +97,123 @@ export const en = {
   startupVideoSound: "Play sound",
   startupVideoVolume: "Startup video volume",
   startupVideoDrop: "Drop an MP4 or WebM here",
+  builtInPlugins: "Built-in plugins",
+  pluginManageJellyfin: "Manage Jellyfin plugins",
+  pluginNoServer: "No Jellyfin server added",
+  pluginInstalledCount: "{{count}} installed",
+  pluginJellyfinServer: "Jellyfin server",
+  pluginServerVersion: "Jellyfin {{version}}",
+  pluginAdminAccess: "Connected",
+  pluginSignInRequired:
+    "Sign in to the selected Jellyfin server with an administrator account, then refresh the plugin list.",
+  pluginAdminRequired:
+    "The current Jellyfin account needs administrator permissions to manage plugins.",
+  pluginServerUnreachable: "The selected Jellyfin server is unreachable.",
+  pluginChecking: "Checking plugin status…",
+  pluginWorking: "Applying plugin change…",
+  pluginRestarting: "Waiting for Jellyfin to restart…",
+  pluginRestarted: "Jellyfin restarted and is reachable again.",
+  pluginFolder: "Local Jellyfin plugins folder",
+  pluginChooseFolder: "Choose folder",
+  pluginChooseFolderHelp: "Offline installation requires the Jellyfin plugins folder.",
+  pluginInstall: "Install",
+  pluginUninstall: "Uninstall",
+  pluginRecommendedConfiguration: "Use recommended Lllllvlv settings",
+  pluginVisualGroup: "Home screen and visuals",
+  pluginLibraryGroup: "Library management and statistics",
+  pluginDependencyGroup: "Core dependencies",
+  pluginInstallNamed: "Install {{name}}",
+  pluginVersionActions: "{{name}} {{version}} actions",
+  pluginThoroughPending: "Uninstall in progress",
+  pluginThoroughSelected: "Selected",
+  pluginThoroughTrayStop:
+    "Freebo will ask the tray-managed Jellyfin server to stop gracefully and back up the selected plugins. Leave the tray application running so you can start Jellyfin from it afterward.",
+  pluginThoroughTrayStart:
+    "The plugin program files are in the backup. Choose Start Jellyfin in the Jellyfin tray menu. Verification starts automatically once the server is running.",
+  pluginThoroughIdentityUnverified:
+    "Could not verify the selected local Jellyfin instance. Check the server address and try again.",
+  pluginThoroughLocalRequired: "This operation requires a local Jellyfin instance.",
+  pluginThoroughDependencyInUse:
+    "Other installed plugins depend on a selected version. Handle those plugins first, then try again.",
+  pluginThoroughExitUnverified:
+    "Jellyfin has not been confirmed stopped. Stop the same instance gracefully, then continue.",
+  pluginThoroughMoveFailed:
+    "The file move could not finish. Check the listed folders and resolve any file locks or permissions before continuing.",
+  pluginThoroughStartFailed:
+    "Could not start Jellyfin automatically. Start the same instance manually to resume verification.",
+  pluginThoroughVerificationFailed:
+    "Jellyfin connectivity and removal of all selected versions have not been verified. Check the server.",
+  pluginThoroughStateChanged:
+    "The Jellyfin instance or plugin folders have changed. Check the current server and the paths in the preview.",
+  pluginThoroughContinueAfterStop: "Server stopped, continue removal",
+  pluginThoroughDoneClose: "Done",
+  pluginThoroughReview: "Preview removal",
+  pluginThoroughPreviewDescription:
+    "Review the exact plugin versions, original folders and backup locations. The operation moves these versions’ program files and preserves Jellyfin plugin configuration, history and data.",
+  pluginThoroughOriginal: "Original folder",
+  pluginThoroughBackup: "Backup location",
+  pluginThoroughConfirm: "Confirm uninstall",
+  pluginThoroughPreviewing: "Checking removal paths…",
+  pluginThoroughRunning: "Starting uninstall…",
+  pluginThoroughStopping: "Stopping Jellyfin…",
+  pluginThoroughMoving: "Moving the selected plugins to the backup…",
+  pluginThoroughAutoStop:
+    "Freebo will ask Jellyfin to stop gracefully, move the selected versions and start the same Jellyfin instance again.",
+  pluginThoroughManualStop:
+    "Stop Jellyfin gracefully. Lllllvlv will move the selected versions once the server has stopped. Start the same Jellyfin instance manually after the move.",
+  pluginThoroughManualStart:
+    "The plugin program files are in the backup. Start the same Jellyfin instance manually. Verification starts automatically once it is running.",
+  pluginThoroughVerifying: "Verifying Jellyfin and plugin status…",
+  pluginThoroughDone:
+    "Jellyfin is reachable again and the selected plugin versions were verified as removed.",
+  pluginThoroughCannotPreview:
+    "Could not confirm the folders for the selected versions. Refresh plugin status and try again.",
+  pluginThoroughFailed:
+    "Uninstall did not complete. Check Jellyfin and the backup locations listed in the preview.",
+  pluginThoroughSelection: "{{count}} versions selected",
+  pluginThoroughClear: "Clear selection",
+  pluginCatalogVersion: "Available version {{version}}",
+  pluginIncompatible: "Incompatible with this server version",
+  pluginOnline: "Online installation",
+  pluginOffline: "Offline installation",
+  pluginOfflinePackageMissing: "This build is missing the offline package.",
+  pluginInstallDependencies: "Install {{names}} first.",
+  pluginLocalOnly:
+    "This customized version requires offline installation on a local Jellyfin server.",
+  pluginCheckAutoUpdate:
+    "Plugin titles refer to the bundled packages. Jellyfin reports installed version numbers, which original and customized builds may share. Check automatic updates in Jellyfin to keep local customizations.",
+  pluginNotInstalled: "Not installed",
+  pluginStatusUnknown: "Status unknown",
+  pluginActive: "Active",
+  pluginDisabled: "Disabled",
+  pluginPendingRemoval: "Pending removal",
+  pluginMalfunctioned: "Failed to load",
+  pluginSuperseded: "Superseded",
+  pluginUnsupported: "Unsupported",
+  pluginPendingInstall: "Pending load",
+  pluginPendingRestart: "Jellyfin restart pending",
+  pluginBatchRestartHelp:
+    "You can install more plugins, then restart this Jellyfin server once to apply the changes.",
+  pluginRestartServer: "Restart Jellyfin",
+  pluginManualRestart: "Restart Jellyfin on the server host, then refresh the status here.",
+  pluginRestartNow: "Restart now",
+  pluginRestartLater: "Restart later",
+  pluginConfirmRestart:
+    "Restarting {{name}} briefly interrupts playback and access on this Jellyfin server.",
+  pluginDirectoryInvalid:
+    "The selected folder is unavailable. Choose the local Jellyfin plugins folder.",
+  pluginInstallFailed:
+    "Installation failed. Check the plugins folder and Jellyfin permissions, then try again.",
+  pluginRecommendedConfigurationFailed:
+    "The plugin files were installed, but the recommended settings could not be saved. You can use the plugin’s defaults.",
+  pluginRestartFailed: "The Jellyfin restart request failed.",
+  pluginRestartTimeout:
+    "Timed out waiting for Jellyfin to restart. Refresh after the server becomes reachable.",
+  pluginLoadFailed:
+    "Jellyfin restarted, but some plugins failed to load. Check their status below.",
+  pluginStateUnavailable: "Could not read plugin status. Refresh and try again.",
+  pluginAlreadyExists: "This plugin version already exists. Refresh the plugin status.",
+  pluginActionUnavailable: "This action is unavailable. Check the plugin status.",
   runInBackgroundDescription:
     "Show a tray icon. When off, closing the window stops playback and quits Lllllvlv.",
   remindOnClose: "Ask before running in the background",

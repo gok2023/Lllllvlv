@@ -7,8 +7,8 @@ Freebo 自有界面的视觉主题由 `settings.visualTheme` 保存，独立于 
 - `src/shared/visual-themes.ts` 是主题 ID、显示名和原生窗口配色的静态注册表。增加主题时同步新增 `src/themes/<id>/style.css` 的浅色与深色语义变量，并由 `src/style.css` 导入。设置 IPC 从注册表读取允许值。主题不拥有业务状态或调用 IPC。
 - `src/App.tsx` 在主窗口、选服务窗口和播放浮窗的 React 根节点设置 `data-visual-theme`。既有 `.dark` 类仍根据应用外观与系统偏好独立决定。Tailwind/shadcn 的颜色与圆角工具通过语义 CSS 变量取值；少量展示性插槽可用主题变量，例如首页标题背景。Original 的插槽值为空。
 - Electron 主进程取注册表中的背景、卡片和标题栏颜色。原生浏览器外壳的固定 88px 高度、网页视图边界和 IPC 保持原有职责。主题样式不进入媒体服务器 `WebContentsView`。
-- 本地统计页面 `web/统计页面.html` 经 Vite 输出为 `watch-statistics.html`，由 `StatisticsFrame` 的同源 iframe 加载。父组件仅向该 iframe 发送白名单 `visual-theme` 展示消息；既有统计 RPC 与数据通道不变。Original 沿用统计页原样式，Elysium 使用透明 iframe 表面透出父窗口的共享画作。打印样式保持白底。
-- Elysium 统计阅读表面位于独立的 `web/elysium-statistics.css`，仅在屏幕媒体及 `data-visual-theme="elysium"` 下生效；Vite 开发服务与构建均提供该文件。Original 和打印规则沿用统计页自身样式。
+- 本地统计页面 `web/统计页面.html` 经 Vite 输出为 `watch-statistics.html`，由 `StatisticsFrame` 的同源 iframe 加载。父组件通过白名单 `visual-theme` 消息同步视觉主题、根据根节点 `.dark` 状态解析出的实际外观，以及 Elysium 当前画作的材质。iframe 就地更新样式，保留统计数据与筛选状态；统计 RPC 继续使用原有通道。
+- `web/watch-statistics-theme.css` 定义统计页的 Original、Slate、Elysium 屏幕配色和白底打印配色，Vite 开发服务与构建均提供该文件。Elysium 在两种外观下均使用深色半透明阅读表面，深色外观进一步压低材质亮度。透明 iframe 让父窗口的共享画作透出。
 
 ## 扩展接口
 

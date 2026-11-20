@@ -83,6 +83,7 @@ export interface Settings {
   startupVideoEnabled: boolean;
   startupVideoSoundEnabled: boolean;
   startupVideoVolume: number;
+  jellyfinPluginsExpanded: boolean;
   startupVideoName?: string;
   startupVideoFile?: string;
 }
@@ -221,6 +222,41 @@ export type PlaybackControl =
   | { action: "seek"; seconds: number }
   | { action: "jump"; index: number };
 export interface DesktopAPI {
+  jellyfinPluginsGet(
+    this: void,
+    serverId: string,
+  ): Promise<import("./jellyfin-plugins").JellyfinPluginState>;
+  jellyfinPluginsChooseDirectory(
+    this: void,
+    serverId: string,
+  ): Promise<import("./jellyfin-plugins").JellyfinPluginState>;
+  jellyfinPluginsInstall(
+    this: void,
+    serverId: string,
+    pluginId: string,
+    useRecommendedConfiguration?: boolean,
+  ): Promise<import("./jellyfin-plugins").JellyfinPluginState>;
+  jellyfinPluginsRestart(
+    this: void,
+    serverId: string,
+  ): Promise<import("./jellyfin-plugins").JellyfinPluginState>;
+  jellyfinPluginsThoroughGet(
+    this: void,
+    serverId: string,
+  ): Promise<import("./jellyfin-plugins").JellyfinThoroughUninstallState | null>;
+  jellyfinPluginsThoroughPrepare(
+    this: void,
+    serverId: string,
+    selections: import("./jellyfin-plugins").JellyfinThoroughUninstallSelection[],
+  ): Promise<import("./jellyfin-plugins").JellyfinThoroughUninstallState>;
+  jellyfinPluginsThoroughContinue(
+    this: void,
+    serverId: string,
+  ): Promise<import("./jellyfin-plugins").JellyfinThoroughUninstallState | null>;
+  jellyfinPluginsThoroughCancel(
+    this: void,
+    serverId: string,
+  ): Promise<import("./jellyfin-plugins").JellyfinThoroughUninstallState | null>;
   getWatchStatistics(
     this: void,
   ): Promise<import("./watch-statistics").WatchStatisticsSnapshot | null>;
@@ -334,6 +370,7 @@ export interface DesktopAPI {
         | "startupVideoEnabled"
         | "startupVideoSoundEnabled"
         | "startupVideoVolume"
+        | "jellyfinPluginsExpanded"
       >
     >,
   ): Promise<AppState>;

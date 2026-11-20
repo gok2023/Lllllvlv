@@ -3,14 +3,39 @@ import { createServer } from "vite";
 import electron from "electron";
 
 await import("./build-electron.mjs");
-const server = await createServer();
-await server.listen();
+
+async function listen(serverOptions = {}) {
+  const server = await createServer({ server: serverOptions });
+  try {
+    await server.listen();
+    const url = server.resolvedUrls?.local[0];
+    if (!url) throw new Error("Vite did not report a local development URL");
+    return { server, url };
+  } catch (error) {
+    await server.close();
+    throw error;
+  }
+}
+
+const { server, url } = await listen().catch((error) => {
+  if (
+    error.code !== "EADDRINUSE" &&
+    !(error.code === "EACCES" && error.syscall === "listen") &&
+    !/^Port \d+ is already in use$/.test(error.message)
+  ) {
+    throw error;
+  }
+  console.warn(`[freebo] ${error.message}. Asking the OS for an available port.`);
+  return listen({ port: 0 });
+});
+console.log(`[freebo] Vite listening at ${url}`);
+
 let child;
 let stopping = false;
 function launch() {
   child = spawn(electron, ["."], {
     stdio: "inherit",
-    env: { ...process.env, FREEBO_DEV_URL: "http://127.0.0.1:5173" },
+    env: { ...process.env, FREEBO_DEV_URL: url },
   });
   child.on("exit", async (code) => {
     if (code === 42 && !stopping) {
@@ -22,7 +47,8 @@ function launch() {
   });
 }
 launch();
-for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => {
-  stopping = true;
-  child.kill(signal);
-});
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () => {
+    stopping = true;
+    child.kill(signal);
+  });

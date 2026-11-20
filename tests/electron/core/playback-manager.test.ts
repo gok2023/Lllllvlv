@@ -28,6 +28,7 @@ const settings: Settings = {
   startupVideoEnabled: false,
   startupVideoSoundEnabled: false,
   startupVideoVolume: 50,
+  jellyfinPluginsExpanded: false,
 };
 const media = (id: string): PreparedMedia => ({
   item: { id, title: id },

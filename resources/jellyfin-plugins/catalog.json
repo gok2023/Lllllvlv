@@ -1,0 +1,223 @@
+{
+  "plugins": [
+    {
+      "id": "170a157f-ac6c-437a-abdd-ca9c25cebd39",
+      "name": "Fanart（4K）",
+      "description": "从 Fanart.tv 获取海报与背景，含本机定制的 4K 背景支持。",
+      "version": "14.0.0.0",
+      "targetAbi": "10.11.5.0",
+      "folder": "Fanart_14.0.0.0",
+      "importFolder": "Fanart_14.0.0.0",
+      "dependencies": [],
+      "metadata": {
+        "guid": "170a157f-ac6c-437a-abdd-ca9c25cebd39",
+        "name": "Fanart",
+        "version": "14.0.0.0",
+        "targetAbi": "10.11.5.0",
+        "owner": "jellyfin",
+        "category": "MoviesAndShows",
+        "description": "从 Fanart.tv 获取海报与背景，含本机定制的 4K 背景支持。",
+        "overview": "从 Fanart.tv 获取海报与背景，含本机定制的 4K 背景支持。",
+        "status": "Active",
+        "autoUpdate": false,
+        "assemblies": [],
+        "imagePath": "jellyfin-plugin-fanart.png"
+      },
+      "files": {
+        "Jellyfin.Plugin.Fanart.dll": "0ed2d8cc25d480c7438a6c79faf52fca3da4bd38ca681737665ebb6dd2c3d31a",
+        "jellyfin-plugin-fanart.png": "7e403559ef37e350a16acb145ad9c1d501508f7854bd4305a4b44a2b05f839c3",
+        "meta.json": "3b40c66246f59040f3e1365cdfeeb7fc19734b51206f5c6b73fafd0f89b23ed0"
+      },
+      "nameEn": "Fanart (4K)",
+      "descriptionEn": "Get posters and backdrops from Fanart.tv with the local 4K backdrop extension.",
+      "customized": true
+    },
+    {
+      "id": "5e87cc92-571a-4d8d-8d98-d2d4147f9f90",
+      "name": "File Transformation",
+      "description": "为其他插件提供 Jellyfin Web 内容转换。",
+      "version": "3.0.3.0",
+      "targetAbi": "10.11.11.0",
+      "folder": "File Transformation_3.0.3.0",
+      "importFolder": "File Transformation_3.0.3.0",
+      "dependencies": [],
+      "metadata": {
+        "guid": "5e87cc92-571a-4d8d-8d98-d2d4147f9f90",
+        "name": "File Transformation",
+        "version": "3.0.3.0",
+        "targetAbi": "10.11.11.0",
+        "owner": "IAmParadox27",
+        "category": "General",
+        "description": "为其他插件提供 Jellyfin Web 内容转换。",
+        "overview": "为其他插件提供 Jellyfin Web 内容转换。",
+        "status": "Active",
+        "autoUpdate": false,
+        "assemblies": [],
+        "imagePath": "logo.png"
+      },
+      "files": {
+        "Jellyfin.Plugin.FileTransformation.dll": "da38733e5ae9d7f67af804128d2bd0df722c286678b13718944906b8e299fcc6",
+        "Jellyfin.Plugin.FileTransformation.deps.json": "ea6516894b9c6264581efc4b7e6041ae95cd3da9cfebd56aed5ae2e9e28d9343",
+        "logo.png": "e224310b6a001b12b18f839f4ed85ed9512084135f0f9122d4d8662263a47071",
+        "meta.json": "80a455b36a7416a7a160db784f0a481a3dc4f267c975dc579370f48b98e797ad"
+      },
+      "nameEn": "File Transformation",
+      "descriptionEn": "Transform Jellyfin Web content for other plugins.",
+      "customized": false,
+      "sourceUrl": "https://github.com/IAmParadox27/jellyfin-plugin-file-transformation/releases/download/3.0.3.0/Release-10.11.11.zip",
+      "checksum": "3ffc219a5c91c9509926cccb0fc9d913",
+      "sourceSha256": "9b023e22d41b08af49df2fef148a01aa2b0164e6de69a2d9951c855c95eb4bf6",
+      "repositoryUrl": "https://www.iamparadox.dev/jellyfin/plugins/manifest.json",
+      "recommendedConfiguration": {
+        "filename": "Jellyfin.Plugin.FileTransformation.xml",
+        "sha256": "54e5621075c920d20c3748bb35f886dd2f0138b92f0277d9e5cbe8ff6695b745"
+      }
+    },
+    {
+      "id": "b8298e01-2697-407a-b44d-aa8dc795e850",
+      "name": "Home Screen Sections（中文）",
+      "description": "管理 Jellyfin 首页分区，保留本机合并的中文界面。",
+      "version": "3.0.4.0",
+      "targetAbi": "10.11.11.0",
+      "folder": "Home Screen Sections_3.0.4.0",
+      "importFolder": "HomeScreenSections",
+      "dependencies": [
+        "5e87cc92-571a-4d8d-8d98-d2d4147f9f90",
+        "5b6550fa-a014-4f4c-8a2c-59a43680ac6d"
+      ],
+      "metadata": {
+        "guid": "b8298e01-2697-407a-b44d-aa8dc795e850",
+        "name": "Home Screen Sections",
+        "version": "3.0.4.0",
+        "targetAbi": "10.11.11.0",
+        "owner": "IAmParadox27",
+        "category": "General",
+        "description": "管理 Jellyfin 首页分区，保留本机合并的中文界面。",
+        "overview": "管理 Jellyfin 首页分区，保留本机合并的中文界面。",
+        "status": "Active",
+        "autoUpdate": false,
+        "assemblies": [],
+        "imagePath": "logo.png"
+      },
+      "files": {
+        "Jellyfin.Plugin.HomeScreenSections.dll": "82594130e0a4b9a8701467b4cecab9cf557aa749cda55bd74875b0593846963a",
+        "Jellyfin.Plugin.HomeScreenSections.deps.json": "c16a61cb7c1f578b6d046e38e88064e076fd849e4a7780616656396cb4253c31",
+        "logo.png": "2ebb274d0340c313015012d4f0b6349dc8344a52494d113d4cece86ed9858459",
+        "meta.json": "65c142850ae3a72a5bf47186469302fa06d89346a869115bb5cf942f6f84acf5"
+      },
+      "nameEn": "Home Screen Sections (Chinese)",
+      "descriptionEn": "Manage Jellyfin home sections with the locally merged Chinese interface.",
+      "customized": true,
+      "externalDependencies": {
+        "5b6550fa-a014-4f4c-8a2c-59a43680ac6d": {
+          "name": "Plugin Pages",
+          "version": "3.0.3.0"
+        }
+      },
+      "recommendedConfiguration": {
+        "filename": "Jellyfin.Plugin.HomeScreenSections.xml",
+        "sha256": "d80931901f9fa4f7d0f4cd24553c9361455154e671c34c396faa5d3c809d1f9a"
+      }
+    },
+    {
+      "id": "08f615ea-2107-4f04-89cc-091035f54448",
+      "name": "Media Bar",
+      "description": "在 Jellyfin Web 首页显示精选媒体横幅。",
+      "version": "3.0.2.0",
+      "targetAbi": "10.11.11.0",
+      "folder": "Media Bar_3.0.2.0",
+      "importFolder": "Media Bar_3.0.2.0",
+      "dependencies": ["5e87cc92-571a-4d8d-8d98-d2d4147f9f90"],
+      "metadata": {
+        "guid": "08f615ea-2107-4f04-89cc-091035f54448",
+        "name": "Media Bar",
+        "version": "3.0.2.0",
+        "targetAbi": "10.11.11.0",
+        "owner": "IAmParadox27 & M0RPH3US",
+        "category": "General",
+        "description": "在 Jellyfin Web 首页显示精选媒体横幅。",
+        "overview": "在 Jellyfin Web 首页显示精选媒体横幅。",
+        "status": "Active",
+        "autoUpdate": false,
+        "assemblies": [],
+        "imagePath": "logo.png"
+      },
+      "files": {
+        "Jellyfin.Plugin.MediaBar.dll": "cbb2e2dc9ea6872bca13dd8aa73876dc09b822f71b735df3361ab5a828c2da6a",
+        "Jellyfin.Plugin.MediaBar.deps.json": "3808a042d7190a3fef7bcbf7925d8a04f9c7ab62b888f3f59e3947f7e53f3aee",
+        "logo.png": "b9802449d49322e071e510297ea59feca51a03f3d9797843a3f6c9330d648939",
+        "meta.json": "cbc608f7429cd86e211f18589845f8bcde89b3bef0180a02ba3f0a6ef94319e3"
+      },
+      "nameEn": "Media Bar",
+      "descriptionEn": "Show a featured media bar on the Jellyfin Web home screen.",
+      "customized": true,
+      "recommendedConfiguration": {
+        "filename": "Jellyfin.Plugin.MediaBar.xml",
+        "sha256": "85b1e46a0dcb149334714f774494c247ffea318a22fe9caa42bd847a05d17959"
+      }
+    },
+    {
+      "id": "5c534381-91a3-43cb-907a-35aa02eb9d2c",
+      "name": "播放统计",
+      "description": "收集和展示 Jellyfin 播放记录，保留本机中文界面。",
+      "version": "17.0.0.0",
+      "targetAbi": "10.11.0.0",
+      "folder": "Playback Reporting_17.0.0.0",
+      "importFolder": "Playback Reporting_17.0.0.0",
+      "dependencies": [],
+      "metadata": {
+        "guid": "5c534381-91a3-43cb-907a-35aa02eb9d2c",
+        "name": "播放统计",
+        "version": "17.0.0.0",
+        "targetAbi": "10.11.0.0",
+        "owner": "jellyfin",
+        "category": "Administration",
+        "description": "收集和展示 Jellyfin 播放记录，保留本机中文界面。",
+        "overview": "收集和展示 Jellyfin 播放记录，保留本机中文界面。",
+        "status": "Active",
+        "autoUpdate": false,
+        "assemblies": [],
+        "imagePath": "jellyfin-plugin-playbackreporting.png"
+      },
+      "files": {
+        "Jellyfin.Plugin.PlaybackReporting.dll": "6b3e4da7bdbdf75c9416d0209af154eb89085036bb27da768e651805122e244c",
+        "SQLitePCL.pretty.dll": "21e2c58dea7e51f0a2606895b13d1de49e458816d4ce49e12cbf28da6f9fda91",
+        "jellyfin-plugin-playbackreporting.png": "06c7788cff2fba2b99ced376f13de2f856f3a700e93b31feca202ce150b96bc9",
+        "meta.json": "e8cfec16464fd2eac796201f54442ed338c0a38a9c6dfc5f5bacc5763264fa58"
+      },
+      "nameEn": "Playback Reporting (Chinese)",
+      "descriptionEn": "Collect and display Jellyfin playback history with the local Chinese interface.",
+      "customized": true
+    },
+    {
+      "id": "347d2c09-78a1-4697-9c3d-e23566122144",
+      "name": "定向入库 Scoped Import",
+      "description": "将指定路径的媒体定向添加到已有媒体库。",
+      "version": "0.2.0.3",
+      "targetAbi": "10.11.11.0",
+      "folder": "ScopedImport_0.2.0.3",
+      "importFolder": "ScopedImport_0.2.0.3",
+      "dependencies": [],
+      "metadata": {
+        "guid": "347d2c09-78a1-4697-9c3d-e23566122144",
+        "name": "定向入库 Scoped Import",
+        "version": "0.2.0.3",
+        "targetAbi": "10.11.11.0",
+        "owner": "",
+        "category": "",
+        "description": "将指定路径的媒体定向添加到已有媒体库。",
+        "overview": "将指定路径的媒体定向添加到已有媒体库。",
+        "status": "Active",
+        "autoUpdate": false,
+        "assemblies": ["ScopedImport.dll"]
+      },
+      "files": {
+        "ScopedImport.dll": "2ab5d0b4fd99d10e4ec1ecf138e6ba5f49cd42c8c594e206f1c1022c3a61f29a",
+        "meta.json": "5f1e715be72229cbf248f6a946de788198c618fd414cbac27c9f507a3e378544"
+      },
+      "nameEn": "Scoped Import",
+      "descriptionEn": "Add media from the specified paths to an existing library.",
+      "customized": true
+    }
+  ]
+}

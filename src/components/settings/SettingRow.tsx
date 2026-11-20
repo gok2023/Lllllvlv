@@ -1,18 +1,26 @@
 import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
 
 export function SettingRow({
   title,
   description,
   icon,
+  divider = true,
   children,
 }: {
   title: string;
   description?: string;
   icon?: ReactNode;
+  divider?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-[25px] border-b py-[18px] max-[650px]:flex-wrap [&>div:first-child]:min-w-0 [&>div:first-child]:flex-1 max-[650px]:[&>div:first-child]:basis-full [&_p]:mt-[5px] [&_p]:text-xs [&_p]:wrap-anywhere">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-[25px] py-[18px] max-[650px]:flex-wrap [&>div:first-child]:min-w-0 [&>div:first-child]:flex-1 max-[650px]:[&>div:first-child]:basis-full [&_p]:mt-[5px] [&_p]:text-xs [&_p]:wrap-anywhere",
+        divider && "border-b",
+      )}
+    >
       <div className="flex items-center gap-3">
         {icon}
         <div className="min-w-0">

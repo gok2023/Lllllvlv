@@ -23,6 +23,7 @@ export function createDesktopFixture() {
       startupVideoEnabled: false,
       startupVideoSoundEnabled: false,
       startupVideoVolume: 50,
+      jellyfinPluginsExpanded: false,
     },
     platform: "darwin",
     version: "1.0.0",
@@ -48,6 +49,24 @@ export function createDesktopFixture() {
     return state;
   }
   const api: DesktopAPI = {
+    jellyfinPluginsGet: vi.fn(async () => {
+      throw new Error("No Jellyfin plugin fixture");
+    }),
+    jellyfinPluginsChooseDirectory: vi.fn(async () => {
+      throw new Error("No Jellyfin plugin fixture");
+    }),
+    jellyfinPluginsInstall: vi.fn(async () => {
+      throw new Error("No Jellyfin plugin fixture");
+    }),
+    jellyfinPluginsRestart: vi.fn(async () => {
+      throw new Error("No Jellyfin plugin fixture");
+    }),
+    jellyfinPluginsThoroughGet: vi.fn(async () => null),
+    jellyfinPluginsThoroughPrepare: vi.fn(async () => {
+      throw new Error("No Jellyfin plugin fixture");
+    }),
+    jellyfinPluginsThoroughContinue: vi.fn(async () => null),
+    jellyfinPluginsThoroughCancel: vi.fn(async () => null),
     getWatchStatistics: vi.fn(async () => null),
     chooseDataDirectory: vi.fn(async () => null),
     migrateDataDirectory: vi.fn(async () => {}),
