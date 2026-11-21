@@ -61,6 +61,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check release version
         run: node -e 'if (process.env.RELEASE_TAG !== "v" + require("./package.json").version) throw new Error("Tag does not match package version")'
+      - name: Restore archived plugins for v1.2.4
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v1.2.4' && matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Get-Content resources/jellyfin-plugins/bundle.json -Raw | ConvertFrom-Json
+          $url = 'https://raw.githubusercontent.com/gok2023/Lllllvlv/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121/jellyfin-plugins-windows-20261121.zip'
+          $expected = '7a67a20e89fe430cbe48226396a024649527aa90edf1d7fcd27cc51be8188048'
+          if ($bundle.sha256 -ne $expected) { throw 'Unexpected v1.2.4 bundle digest' }
+          $archive = Join-Path $env:RUNNER_TEMP 'jellyfin-plugins-windows-20261121.zip'
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $expected) { throw 'Archived plugin bundle SHA-256 mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath resources/jellyfin-plugins/payload
+          node --input-type=module -e "import {loadPluginAssets,localPayloadDir} from './scripts/jellyfin-plugin-assets.mjs'; await loadPluginAssets(localPayloadDir,false)"
       - run: pnpm build
       - name: Configure macOS credentials
         if: matrix.platform == 'mac'
@@ -123,4 +137,4 @@ jobs:
             echo "Release $RELEASE_TAG already exists; preserving its assets."
             exit 0
           fi
-          gh release create "$RELEASE_TAG" --repo "${{ github.repository }}" --draft --generate-notes release/*
+          gh release create "$RELEASE_TAG" --repo "${{ github.repository }}" --title "Lllllvlv $RELEASE_TAG" --draft --generate-notes release/*

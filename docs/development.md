@@ -174,9 +174,15 @@ Jellyfin 插件版本、来源和本机离线包的构建方法见 [Jellyfin 插
 
 [GitHub Actions](../.github/workflows/ci.yml) 对外部 fork 的 Pull Request 执行三平台检查；普通分支推送及仓库内的 Pull Request 不重复检查。推送 `v*` 标签后构建安装包并创建草稿 Release，标签须与 `package.json` 版本一致。
 
-发布时保留安装包、ZIP、blockmap、`latest*.yml` 和校验和；macOS arm64/x64 在同一次 builder 调用中生成，共用一份更新元数据。手动发布草稿后，更新器才会发现版本。
+本仓库公开 Releases 只发布应用版本，标题统一为 `Lllllvlv vX.Y.Z`，其中版本与标签一致。CI 新建草稿时设置此标题；发布者检查标题后再手动发布。草稿正文先按实际构建平台列出安装版、便携版及 `SHA256SUMS.txt` 校验入口，使用当次构建的真实附件文件名，再列面向用户的更新内容；不要改写历史版本的下载地址。`Latest` 只指向已验收的稳定应用版本。插件资源保存在独立 `plugin-archives` 分支，不单开插件 Release；固定来源、逐文件摘要和对应源码见 [Jellyfin 插件目录](jellyfin-plugins.md)。
 
-需要重新打包已有标签时，可手动运行同一工作流并指定 `release_tag`。工作流检出该标签并校验应用版本，使用当前工作流配置重新生成产物，无需移动版本标签。macOS 仅在对应 secret 非空时设置签名与公证环境变量；未配置时生成未签名安装包。
+发布时保留安装包、ZIP、blockmap、`latest*.yml` 和校验和；macOS arm64/x64 在同一次 builder 调用中生成，共用一份更新元数据。本分支已关闭上游自动更新入口，发布草稿不会在应用内触发自动更新。
+
+需要重新打包已有标签时，从 `main` 手动运行同一工作流并指定 `release_tag`。工作流检出该标签并校验应用版本，使用该标签的源码与当前工作流配置生成产物，无需移动版本标签。`v1.2.4` 的原脚本指向已撤下的插件资源 Release；当前工作流仅在手动重打该标签的 Windows 作业中下载不可变归档，核对旧标签的 bundle 摘要并预置 payload，再由旧标签打包钩子逐文件校验。直接从旧标签启动旧工作流没有此预置步骤。macOS 仅在对应 secret 非空时设置签名与公证环境变量；未配置时生成未签名安装包。
+
+### v1.2.4 历史标签本地重打包
+
+检出 `v1.2.4` 到独立干净目录。取得 [插件资源归档](jellyfin-plugins.md#发行资源与源码索引)中的原始 `jellyfin-plugins-windows-20261121.zip`，先核对其 SHA-256 为 `7a67a20e89fe430cbe48226396a024649527aa90edf1d7fcd27cc51be8188048`。将 ZIP 解压到该检出的 `resources/jellyfin-plugins/payload/`，保持 ZIP 内每个插件目录和文件的原始层级。此目录被 Git 忽略。导入入口 `pnpm jellyfin:import-plugins <Jellyfin plugins 目录>` 也可生成 payload，但需要一个同时包含目录清单中所有锁定版本的插件目录，不能用只有当前 12.x 构建的生产目录替代。预置后用 `node --input-type=module -e "import {loadPluginAssets,localPayloadDir} from './scripts/jellyfin-plugin-assets.mjs'; await loadPluginAssets(localPayloadDir,false)"` 核验全部文件，再执行 `pnpm package`。旧标签的 Windows 打包钩子默认优先读取本地 payload；设置 `FREEBO_PACKAGE_LOCAL_JELLYFIN_PLUGINS=1` 也可，值为 `0` 则会跳过插件打包。以上只说明历史源码的本地重打包入口，不改变旧标签，也不证明跨平台构建或签名。
 
 macOS 签名与公证使用 GitHub Actions secrets：
 

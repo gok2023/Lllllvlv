@@ -1,5 +1,9 @@
 # Jellyfin 插件目录
 
+## 发行资源与源码索引
+
+Windows 内置插件包固定为同仓库 `plugin-archives` 分支在 2026-11-21 保存的[不可变提交](https://github.com/gok2023/Lllllvlv/tree/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121)。其中 [SOURCE-MANIFEST.md](https://github.com/gok2023/Lllllvlv/blob/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121/SOURCE-MANIFEST.md) 索引插件二进制、五个定制源码 ZIP、上游来源及许可；[SHA256SUMS.txt](https://github.com/gok2023/Lllllvlv/blob/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121/SHA256SUMS.txt) 记录六个归档 ZIP 和三个单插件 ZIP 的摘要，后三者用于对照，未作为独立附件归档。主包 [jellyfin-plugins-windows-20261121.zip](https://github.com/gok2023/Lllllvlv/blob/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121/jellyfin-plugins-windows-20261121.zip) 的 SHA-256 同时固定在 [bundle.json](../resources/jellyfin-plugins/bundle.json)，下载脚本仅接受固定 HTTPS 主机、限制大小并核对 ZIP 和每个文件的摘要。分支名称可移动，构建来源以此提交 ID 为准。此归档是插件资源，不是应用 Release。
+
 目录现同时提供 Windows x64 的 Jellyfin 10.11.x 与 12.x 独立构建；当前清单和定制迁移入口见 [长期维护文档](jellyfin-maintenance.md)。以下原始盘点基于 Jellyfin 10.11.11。服务使用 `--datadir` 指向独立数据目录，盘点取其 `plugins` 下的 10 个 Active 插件。Freebo 内置目录收录 Fanart、File Transformation、Home Screen Sections、Media Bar、Playback Reporting、Plugin Pages 和 Scoped Import。锁定 GUID、插件版本、Jellyfin 目标 ABI、插件间依赖、发布文件清单和 SHA-256 见 [catalog.json](../resources/jellyfin-plugins/catalog.json)。
 
 ## 来源与二进制对照

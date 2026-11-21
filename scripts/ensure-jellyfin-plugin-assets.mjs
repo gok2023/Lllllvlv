@@ -13,9 +13,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 const bundleUrl =
-  "https://github.com/gok2023/Lllllvlv/releases/download/jellyfin-plugins-20261121/jellyfin-plugins-windows-20261121.zip";
+  "https://raw.githubusercontent.com/gok2023/Lllllvlv/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121/jellyfin-plugins-windows-20261121.zip";
 const maxZipBytes = 256 * 1024 * 1024;
-const allowedRedirectHosts = new Set(["github.com", "release-assets.githubusercontent.com"]);
+const allowedRedirectHosts = new Set(["raw.githubusercontent.com"]);
 
 const extractCommand = String.raw`
 $ErrorActionPreference = 'Stop'

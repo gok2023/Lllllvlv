@@ -81,10 +81,10 @@ HSS 管理员配置在 `plugins/configurations/Jellyfin.Plugin.HomeScreenSection
 - 修复先按未知服务器版本筛选、丢弃 12.x 后再次筛选导致的兼容性误报，始终从完整目录选择当前 ABI 的构建。
 - 已安装构建优先使用服务器报告 ABI，无法唯一匹配的磁盘目录不猜测。Active 插件不因缺少内置候选被误标为不兼容；仅兼容候选版本更高或本机核心 DLL/依赖摘要确实不同才提示更新，服务端自动改写的 meta.json 不参与构建摘要。
 - 默认卡片只显示官方英文名、中文描述、状态与当前/可用版本；ABI 和完整构建表放入折叠详情，保留原主题和管理操作。
-- Windows 正式包默认包含十四个锁定构建。源树缺少 payload 时按 bundle.json 从版本化资源 Release 下载，先校验 ZIP 摘要/条目，再核对每个文件；旧版本不删除。新 ABI 推荐配置独立打包，已有配置不覆盖。
-- 已验收 HSS 和 Scoped Import 二进制作为发行基线，分别维护对应源码、版本标记和许可。资源包附源码/上游来源清单；HSS 私有仓库可见性不因发布安装器改变。
+- Windows 正式包默认包含十四个锁定构建。源树缺少 payload 时按 bundle.json 从不可变提交的插件资源归档下载，先校验 ZIP 摘要/条目，再核对每个文件；旧版本不删除。新 ABI 推荐配置独立打包，已有配置不覆盖。
+- 已验收 HSS 和 Scoped Import 二进制作为发行基线，分别维护对应源码、版本标记和许可。[插件资源与源码索引](jellyfin-plugins.md#发行资源与源码索引)列出归档清单；HSS 私有仓库可见性不因发布安装器改变。
 - 公开源码与 Release 不含本机数据库、令牌、私人配置、观看档案或完整日志。实际备份/空间清理清单保存在本机升级工具目录，不随应用发布。
 
 最终发布验收：284 项测试通过、1 项跳过，类型检查、lint、应用及品牌构建通过；Windows 包已校验十四个构建，并更新本机正式安装。用户配置、登录和观影档案保留，HSS/Scoped Import 沿用用户已确认的实际验收。本机正式回退点及空间清理明细维护在升级工具的本地报告中，不发布私人档案。
 
-远端最终 1.2.4 的 Windows、macOS、Linux 打包均通过；正式 Windows 附件与本机交付文件逐一核对 GitHub SHA-256 摘要一致。应用发布见 [v1.2.4](https://github.com/gok2023/Lllllvlv/releases/tag/v1.2.4)，两项定制插件的发布与对应源码见各仓库及插件资源 Release。
+远端最终 1.2.4 的 Windows、macOS、Linux 打包均通过；正式 Windows 附件与本机交付文件逐一核对 GitHub SHA-256 摘要一致。应用发布见 [v1.2.4](https://github.com/gok2023/Lllllvlv/releases/tag/v1.2.4)，定制插件的源码与许可见[插件资源归档](jellyfin-plugins.md#发行资源与源码索引)。
