@@ -1,6 +1,6 @@
 # Jellyfin 插件目录
 
-目录基于 Windows x64 上实际运行的 Jellyfin 10.11.11。服务使用 `--datadir` 指向独立数据目录，盘点取其 `plugins` 下的 10 个 Active 插件。Freebo 内置目录收录 Fanart、File Transformation、Home Screen Sections、Media Bar、Playback Reporting 和 Scoped Import。锁定 GUID、插件版本、Jellyfin 目标 ABI、插件间依赖、发布文件清单和 SHA-256 见 [catalog.json](../resources/jellyfin-plugins/catalog.json)。
+目录现同时提供 Windows x64 的 Jellyfin 10.11.x 与 12.x 独立构建；当前清单和定制迁移入口见 [长期维护文档](jellyfin-maintenance.md)。以下原始盘点基于 Jellyfin 10.11.11。服务使用 `--datadir` 指向独立数据目录，盘点取其 `plugins` 下的 10 个 Active 插件。Freebo 内置目录收录 Fanart、File Transformation、Home Screen Sections、Media Bar、Playback Reporting、Plugin Pages 和 Scoped Import。锁定 GUID、插件版本、Jellyfin 目标 ABI、插件间依赖、发布文件清单和 SHA-256 见 [catalog.json](../resources/jellyfin-plugins/catalog.json)。
 
 ## 来源与二进制对照
 
@@ -78,3 +78,13 @@ try {
 | Media Bar 3.0.2.0            | 启用横幅及选定的界面参数。头像、SVG 与播放列表由 Jellyfin 管理。                                                                           |
 
 Fanart 的本机配置为空，Scoped Import 没有同类插件配置文件。Playback Reporting 的设置位于 Jellyfin 数据目录的 `config` 下，包含保留期限和备份设置，沿用该实例的现有设置。Home Screen Sections 的 `ModularHomeSettings.json` 是按 Jellyfin 用户保存的个人首页状态。
+
+## 当前 Jellyfin 12.4 维护结果
+
+当前市场为七个官方英文名称、十四个独立构建。目标版本矩阵、HSS 混合时间流移植、Scoped Import 12.4 适配与配置保留规则统一维护在 [jellyfin-maintenance.md](jellyfin-maintenance.md)，不以插件版本号代替目标 ABI。
+
+12.x 官方 ZIP 的原始摘要与本地汉化文件摘要见 catalog.json。汉化词表位于 resources/jellyfin-plugins/localization，处理脚本为 scripts/jellyfin-localize-pages.py 与 scripts/jellyfin-localize-plugins.ps1；显示文本汉化保留，名称恢复官方英文，GUID、页面路由、选项值和配置键不变。HSS 定制构建及对应源码补丁已纳入，旧 10.11 构建保留。Scoped Import 0.2.0.3 的新旧 ABI 包独立保存。
+
+本轮源码管理器对正式 12.4 的只读查询返回 admin、七个兼容包、完整依赖、已安装版本及 ABI。八项多构建/依赖/配置回归、TypeScript 检查和源码前后端构建通过，十四个本地白名单包通过文件哈希校验。Scoped Import 已安装 Active、Ready=true；真实入库等待用户手动验收。没有更换 Lllllvlv 安装版或推送 GitHub，没有新增统计同步或媒体扫描。
+
+本文前面的 10.11 审计及来源记录属于历史证据，不能替代当前构建矩阵或外推完整功能验收。开发数据目录 .local 含真实档案副本，不提交；payload 仍按原规则本地保存，公开分发须连同对应源码及许可材料维护。

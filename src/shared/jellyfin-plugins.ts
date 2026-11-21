@@ -17,13 +17,18 @@ export interface JellyfinPlugin {
   descriptionEn?: string;
   customized: boolean;
   version: string;
+  targetAbi?: string;
+  availableBuilds?: { version: string; targetAbi: string; compatible: boolean }[];
   bundled: boolean;
+  buildMatches?: boolean | null;
+  updateAvailable?: boolean;
   compatible: boolean;
   missingDependencies: { id: string; name: string; version: string }[];
   installation: "online" | "offline" | null;
   recommendedConfiguration?: boolean;
   installed: {
     version: string;
+    targetAbi?: string;
     status: string;
     canThoroughUninstall: boolean;
   }[];

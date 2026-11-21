@@ -128,7 +128,7 @@ export async function processPluginDirectory(serverUrl: string) {
 }
 
 export async function inspectPluginDirectory(directory: string) {
-  const versions: { id: string; version: string }[] = [];
+  const versions: { id: string; version: string; targetAbi?: string; folder: string }[] = [];
   const names = new Set<string>();
   let unknown = false;
   for (const item of await readdir(directory, { withFileTypes: true })) {
@@ -146,7 +146,12 @@ export async function inspectPluginDirectory(directory: string) {
       const parsed = diskMetadata.parse(
         JSON.parse((await readFile(metadata, "utf8")).replace(/^\uFEFF/, "")),
       );
-      versions.push({ id: parsed.guid, version: parsed.version });
+      versions.push({
+        id: parsed.guid,
+        version: parsed.version,
+        targetAbi: parsed.targetAbi,
+        folder: item.name,
+      });
     } catch {
       // A directory with assemblies but no verifiable identity could contain the same plugin.
       const contents = await readdir(folder, { recursive: true, withFileTypes: true });
@@ -155,6 +160,35 @@ export async function inspectPluginDirectory(directory: string) {
     }
   }
   return { versions, names, unknown };
+}
+
+export async function compareInstalledBuild(
+  directory: string,
+  folders: { id: string; version: string; folder: string }[],
+  plugin: CatalogPlugin,
+): Promise<boolean | null> {
+  const matching = folders.filter(
+    (entry) => entry.id === plugin.id && entry.version === plugin.version,
+  );
+  if (matching.length !== 1) return null;
+  const files = Object.entries(plugin.files).filter(([name]) => /\.dll$|\.deps\.json$/i.test(name));
+  if (!files.some(([name]) => /\.dll$/i.test(name))) return null;
+  let equal = true;
+  try {
+    for (const [name, checksum] of files) {
+      const path = join(directory, matching[0].folder, name);
+      if (!(await lstat(path)).isFile()) return null;
+      if (
+        createHash("sha256")
+          .update(await readFile(path))
+          .digest("hex") !== checksum
+      )
+        equal = false;
+    }
+  } catch {
+    return null;
+  }
+  return equal;
 }
 
 export async function payloadPresent(root: string, plugin: CatalogPlugin) {

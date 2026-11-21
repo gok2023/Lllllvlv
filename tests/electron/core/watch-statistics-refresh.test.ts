@@ -52,8 +52,12 @@ function fetcher(
   records: string[],
   reportUserId = userId,
 ): typeof fetch {
-  return (async (input: string | URL | Request) => {
-    const url = new URL(String(input));
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBe('MediaBrowser Token="synthetic"');
+    expect(headers.has("X-Emby-Token")).toBe(false);
+    expect(headers.has("X-MediaBrowser-Token")).toBe(false);
+    const url = new URL(input instanceof Request ? input.url : input.toString());
     let body: unknown;
     if (url.pathname.endsWith("/Views")) body = { Items: [{ Id: libraryId, Name: "库" }] };
     else if (url.pathname.endsWith("/submit_custom_query")) body = history(records, reportUserId);
@@ -179,7 +183,7 @@ it("rejects a truncated media page before replacing the archive", async () => {
   );
   const normal = fetcher([episode(episodeIds[1])], [episodeIds[0]]);
   const broken = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(String(input));
+    const url = new URL(input instanceof Request ? input.url : input.toString());
     if (url.pathname.endsWith("/Items"))
       return { ok: true, json: async () => ({ Items: [], TotalRecordCount: 2 }) } as Response;
     return normal(input, init);
@@ -358,7 +362,12 @@ it("does not collapse a different server playback one second away", async () => 
   const normal = fetcher([episode(episodeIds[1])], [episodeIds[1]]);
   const shifted = (async (input: string | URL | Request, init?: RequestInit) => {
     const response = await normal(input, init);
-    if (!new URL(String(input)).pathname.endsWith("/submit_custom_query")) return response;
+    if (
+      !new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith(
+        "/submit_custom_query",
+      )
+    )
+      return response;
     const body = (await response.json()) as ReturnType<typeof history>;
     body.results[0][0] = "2026-11-01 12:00:01";
     return { ok: true, json: async () => body } as Response;
@@ -419,7 +428,11 @@ it("does not let an in-flight refresh replace a later imported archive", async (
   });
   const normal = fetcher([episode(episodeIds[0])], [episodeIds[0]]);
   const slow = (async (input: string | URL | Request, init?: RequestInit) => {
-    if (new URL(String(input)).pathname.endsWith("/submit_custom_query")) {
+    if (
+      new URL(input instanceof Request ? input.url : input.toString()).pathname.endsWith(
+        "/submit_custom_query",
+      )
+    ) {
       started();
       await blocked;
     }

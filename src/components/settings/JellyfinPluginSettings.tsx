@@ -161,7 +161,7 @@ export function JellyfinPluginSettings() {
 
   function renderPlugin(plugin: Plugin, Icon: typeof Puzzle) {
     if (!pluginState) return null;
-    const name = pluginName(plugin, locale);
+    const name = plugin.nameEn ?? plugin.name;
     const description =
       locale === "en" ? (plugin.descriptionEn ?? plugin.description) : plugin.description;
     const uninstalled = plugin.installed.length === 0;
@@ -170,7 +170,7 @@ export function JellyfinPluginSettings() {
     const useRecommendedConfiguration =
       plugin.recommendedConfiguration === true && !configOptOut.has(configKey);
     const listAvailable = pluginState.access === "admin" && !pluginState.error;
-    const metadata = [t("pluginCatalogVersion", { version: plugin.version })];
+    const metadata: string[] = [];
     if (plugin.installation) {
       metadata.push(t(plugin.installation === "online" ? "pluginOnline" : "pluginOffline"));
     }
@@ -189,6 +189,35 @@ export function JellyfinPluginSettings() {
           </div>
         </div>
         <div className="mt-auto space-y-1.5 text-xs wrap-anywhere text-muted-foreground">
+          {uninstalled && <p>{t("pluginCatalogVersion", { version: plugin.version })}</p>}
+          <Collapsible>
+            <CollapsibleTrigger className="text-xs text-muted-foreground underline underline-offset-2">
+              {t("pluginDetails")}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-1 pt-1">
+              <p>ABI {plugin.targetAbi}</p>
+              {plugin.installed.map((entry) => (
+                <p key={entry.version}>
+                  ABI {entry.targetAbi ?? t("pluginAbiUnknown")} · {entry.version}
+                </p>
+              ))}
+              {plugin.buildMatches !== null && plugin.buildMatches !== undefined && (
+                <p>{t(plugin.buildMatches ? "pluginBuildMatches" : "pluginBuildDiffers")}</p>
+              )}
+              {plugin.availableBuilds && plugin.availableBuilds.length > 1 && (
+                <p>
+                  {t("pluginBuilds", {
+                    builds: plugin.availableBuilds
+                      .map(
+                        (build) =>
+                          `${build.version} / ABI ${build.targetAbi} (${t(build.compatible ? "pluginBuildCompatible" : "pluginBuildIncompatible")})`,
+                      )
+                      .join("; "),
+                  })}
+                </p>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
           {uninstalled && (
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -261,9 +290,12 @@ export function JellyfinPluginSettings() {
               )}
             </div>
           ))}
-          {pluginState.serverVersion && !plugin.compatible && (
-            <p className="text-destructive">{t("pluginIncompatible")}</p>
-          )}
+          {plugin.updateAvailable && <p>{t("pluginUpdateAvailable")}</p>}
+          {pluginState.serverVersion &&
+            !plugin.compatible &&
+            !plugin.installed.some((entry) => entry.status === "active") && (
+              <p className="text-destructive">{t("pluginIncompatible")}</p>
+            )}
           {listAvailable &&
             plugin.compatible &&
             !installable &&

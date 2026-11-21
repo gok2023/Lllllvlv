@@ -1,3 +1,4 @@
+import { jellyfinAuthorization } from "./jellyfin-authorization";
 import { readFile, writeFile, mkdir, copyFile, unlink, rename, readdir } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { join, dirname } from "node:path";
@@ -1157,7 +1158,7 @@ export class WatchStatisticsStore {
         const response = await fetcher(`${base}/${path}`, {
           method: body ? "POST" : "GET",
           headers: {
-            "X-Emby-Token": auth.token,
+            Authorization: jellyfinAuthorization(auth.token),
             Accept: "application/json",
             ...(body ? { "Content-Type": "application/json" } : {}),
           },

@@ -1,3 +1,4 @@
+import { jellyfinAuthorization } from "./jellyfin-authorization";
 import { createHash } from "node:crypto";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -9,6 +10,7 @@ import type { Fetcher } from "../providers/types";
 import { JellyfinThoroughUninstall, type ThoroughAction } from "./jellyfin-plugin-uninstall";
 import {
   catalogSchema,
+  compareInstalledBuild,
   copyApprovedPlugin,
   copyRecommendedConfiguration,
   inspectPluginDirectory,
@@ -34,6 +36,7 @@ const installedSchema = z.array(
     Id: jellyfinGuid,
     Version: pluginVersion,
     Status: z.string().optional(),
+    TargetAbi: pluginVersion.optional(),
   }),
 );
 const packageSchema = z.object({
@@ -100,11 +103,39 @@ function versionAtLeast(actual: number[], expected: number[]) {
   return true;
 }
 
-function compatible(server: string, target: string) {
+export function compatible(server: string, target: string) {
   const actual = versionParts(server);
   const expected = versionParts(target);
-  // ABI compatibility across server minor versions is not implied by the catalog minimum.
-  return actual[0] === expected[0] && actual[1] === expected[1] && versionAtLeast(actual, expected);
+  // Jellyfin 12.x uses a major ABI line; 10.x plugins remain tied to their minor line.
+  return (
+    actual[0] === expected[0] &&
+    (actual[0] >= 12 || actual[1] === expected[1]) &&
+    versionAtLeast(actual, expected)
+  );
+}
+
+export function selectCatalogBuilds(plugins: CatalogPlugin[], serverVersion: string) {
+  return plugins.filter((plugin, _index, all) => {
+    const candidates = all.filter((entry) => entry.id === plugin.id);
+    const matching = candidates.filter((entry) => compatible(serverVersion, entry.targetAbi));
+    const compare = (a: string, b: string) => {
+      const left = versionParts(a),
+        right = versionParts(b);
+      for (let i = 0; i < 4; i++) {
+        const difference = (right[i] ?? 0) - (left[i] ?? 0);
+        if (difference) return difference;
+      }
+      return 0;
+    };
+    const selected =
+      matching.sort(
+        (a, b) =>
+          compare(a.version, b.version) ||
+          compare(a.targetAbi, b.targetAbi) ||
+          a.folder.localeCompare(b.folder),
+      )[0] ?? candidates[0];
+    return plugin === selected;
+  });
 }
 
 const status = (value: string | undefined) => value?.toLowerCase() ?? "unknown";
@@ -172,7 +203,7 @@ export class JellyfinPluginManager {
     return (path, method = "GET", timeout = 7000) =>
       fetcher(`${server.url}/${path}`, {
         method,
-        headers: token ? { "X-Emby-Token": token } : {},
+        headers: token ? { Authorization: jellyfinAuthorization(token) } : {},
         redirect: "error",
         cache: "no-store",
         signal: AbortSignal.timeout(timeout),
@@ -282,7 +313,8 @@ export class JellyfinPluginManager {
         this.report("Jellyfin bundled plugin catalog is unavailable");
         return [];
       });
-    const plugins = await this.catalog;
+    const allBuilds = await this.catalog;
+    let plugins = selectCatalogBuilds(allBuilds, "0.0.0.0");
     const state: JellyfinPluginState = {
       serverId: server.id,
       serverVersion: null,
@@ -306,6 +338,8 @@ export class JellyfinPluginManager {
       if (info.ProductName !== "Jellyfin Server" && info.ProductName !== "Jellyfin")
         throw new Error();
       state.serverVersion = info.Version;
+      plugins = selectCatalogBuilds(allBuilds, info.Version);
+      result.plugins = plugins;
       if (remembered?.jellyfinId !== info.Id) state.pendingRestart = false;
       result.info = info;
       result.record =
@@ -393,9 +427,18 @@ export class JellyfinPluginManager {
         const bundled = await payloadPresent(this.paths.resources, plugin);
         const known = (installed ?? []).filter(({ Id }) => Id === plugin.id);
         const onDisk = disk?.versions.filter(({ id }) => id === plugin.id) ?? [];
+        // A version can have both 10.x and 12.x builds on disk. Prefer Jellyfin's
+        // loaded manifest; an ambiguous disk match cannot identify the active ABI.
+        const loadedAbi = (id: string, version: string, reported?: string) => {
+          if (reported) return reported;
+          const matches =
+            disk?.versions.filter((entry) => entry.id === id && entry.version === version) ?? [];
+          return matches.length === 1 ? matches[0].targetAbi : undefined;
+        };
         const versions = known.map((item) => ({
           version: item.Version,
           status: status(item.Status),
+          targetAbi: loadedAbi(plugin.id, item.Version, item.TargetAbi),
           canThoroughUninstall:
             process.platform === "win32" &&
             !!result.request &&
@@ -405,6 +448,7 @@ export class JellyfinPluginManager {
           if (!versions.some(({ version }) => version === item.version))
             versions.push({
               version: item.version,
+              targetAbi: item.targetAbi,
               status: result.record?.pending.some(
                 (entry) =>
                   entry.pluginId === plugin.id &&
@@ -416,19 +460,44 @@ export class JellyfinPluginManager {
               canThoroughUninstall: process.platform === "win32" && !!result.request,
             });
         }
+        const active = versions.filter((entry) => entry.status === "active");
+        const buildMatches =
+          state.directory && disk && active.length === 1 && active[0].version === plugin.version
+            ? await compareInstalledBuild(state.directory, disk.versions, plugin)
+            : null;
+        const updateAvailable =
+          (eligible &&
+            active.some((entry) => {
+              const current = versionParts(entry.version);
+              const candidate = versionParts(plugin.version);
+              const newer = candidate.findIndex((part, index) => part !== (current[index] ?? 0));
+              return newer >= 0 && candidate[newer] > (current[newer] ?? 0);
+            })) ||
+          (eligible &&
+            active.some((entry) => entry.version === plugin.version) &&
+            buildMatches === false);
         const missingDependencies = plugin.dependencies.flatMap((dependency) => {
           const id = dependency.toLowerCase();
           const approved =
             plugins.find((entry) => entry.id === id) ?? plugin.externalDependencies[id];
           const version = approved?.version ?? "0.0.0.0";
+          const approvedAbi =
+            approved && "targetAbi" in approved && typeof approved.targetAbi === "string"
+              ? approved.targetAbi
+              : undefined;
+          const abiMatches = (abi?: string) =>
+            !!state.serverVersion &&
+            (!approvedAbi || compatible(state.serverVersion, approvedAbi)) &&
+            (!abi || compatible(state.serverVersion, abi));
           const expected = versionParts(version);
           const versionMatches = (value: string) => {
             const actual = versionParts(value);
             return actual[0] === expected[0] && versionAtLeast(actual, expected);
           };
           const listed = installed?.some(
-            ({ Id, Version, Status }) =>
+            ({ Id, Version, Status, TargetAbi }) =>
               Id === id &&
+              abiMatches(loadedAbi(id, Version, TargetAbi)) &&
               versionMatches(Version) &&
               ["active", "restart"].includes(status(Status)) &&
               !result.record?.pending.some(
@@ -443,7 +512,13 @@ export class JellyfinPluginManager {
               entry.pluginId === id &&
               entry.action === "offline-install" &&
               versionMatches(entry.version) &&
-              disk?.versions.some((item) => item.id === id && item.version === entry.version),
+              disk?.versions.some(
+                (item) =>
+                  item.id === id &&
+                  item.version === entry.version &&
+                  !!item.targetAbi &&
+                  abiMatches(item.targetAbi),
+              ),
           );
           return listed || queued ? [] : [{ id, name: approved?.name ?? id, version }];
         });
@@ -481,6 +556,14 @@ export class JellyfinPluginManager {
         return {
           id: plugin.id,
           version: plugin.version,
+          targetAbi: plugin.targetAbi,
+          availableBuilds: allBuilds
+            .filter((entry) => entry.id === plugin.id)
+            .map((entry) => ({
+              version: entry.version,
+              targetAbi: entry.targetAbi,
+              compatible: !!state.serverVersion && compatible(state.serverVersion, entry.targetAbi),
+            })),
           name: plugin.name,
           description: plugin.description,
           nameEn: plugin.nameEn,
@@ -489,6 +572,8 @@ export class JellyfinPluginManager {
           missingDependencies,
           compatible: eligible,
           bundled,
+          buildMatches,
+          updateAvailable,
           installation,
           recommendedConfiguration:
             !!plugin.recommendedConfiguration &&

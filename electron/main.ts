@@ -1,3 +1,4 @@
+import { jellyfinAuthorization } from "./core/jellyfin-authorization";
 import {
   app,
   BrowserWindow,
@@ -409,7 +410,7 @@ async function watchTick() {
       server.url,
     ) as typeof fetch;
     const response = await fetcher(`${auth.baseUrl.replace(/\/$/, "")}/Sessions`, {
-      headers: { "X-Emby-Token": auth.token },
+      headers: { Authorization: jellyfinAuthorization(auth.token) },
     });
     if (response.ok) {
       const sessions = (await response.json()) as { UserId?: string; NowPlayingItem?: unknown }[];

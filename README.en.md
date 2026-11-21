@@ -63,3 +63,7 @@ See the [development workflow](docs/development.md) for running from source, che
 Thanks to [embyToLocalPlayer](https://github.com/kjtsune/embyToLocalPlayer) for protocol and behavior references.
 
 Lllllvlv is based on [the original Freebo project](https://github.com/elonzh/freebo). Thanks to its author, elonzh, and contributors. Freebo's attribution and Apache-2.0 terms are retained in [NOTICE](NOTICE) and [LICENSE](LICENSE); this fork's source changes are also released under that license. Elysium wallpapers remain copyrighted by their original creators and are not covered by the Apache-2.0 code license.
+
+## Jellyfin compatibility
+
+Windows 1.2.3 includes separate plugin builds for Jellyfin 10.11.x and 12.4, standard API authentication, the accepted HSS merged recently-added customization and Scoped Import. Existing watch history, identity mappings and user configuration are preserved. See [maintenance notes](docs/jellyfin-maintenance.md).

@@ -118,4 +118,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
-        run: gh release create "$RELEASE_TAG" --repo "${{ github.repository }}" --draft --generate-notes release/*
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; preserving its assets."
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" --repo "${{ github.repository }}" --draft --generate-notes release/*
