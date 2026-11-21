@@ -66,4 +66,4 @@ Lllllvlv is based on [the original Freebo project](https://github.com/elonzh/fre
 
 ## Jellyfin compatibility
 
-Windows 1.2.3 includes separate plugin builds for Jellyfin 10.11.x and 12.4, standard API authentication, the accepted HSS merged recently-added customization and Scoped Import. Existing watch history, identity mappings and user configuration are preserved. See [maintenance notes](docs/jellyfin-maintenance.md).
+Windows 1.2.4 includes separate plugin builds for Jellyfin 10.11.x and 12.4, standard API authentication, the accepted HSS merged recently-added customization and Scoped Import. Existing watch history, identity mappings and user configuration are preserved. See [maintenance notes](docs/jellyfin-maintenance.md).

@@ -20,7 +20,7 @@ const allowedRedirectHosts = new Set(["github.com", "release-assets.githubuserco
 const extractCommand = String.raw`
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$catalog = Get-Content -LiteralPath $env:FREEBO_PLUGIN_CATALOG -Raw | ConvertFrom-Json
+$catalog = Get-Content -LiteralPath $env:FREEBO_PLUGIN_CATALOG -Raw -Encoding UTF8 | ConvertFrom-Json
 $allowed = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($plugin in $catalog.plugins) {
   $folder = [string]$plugin.folder
@@ -45,7 +45,7 @@ try {
     if ($total -gt 1073741824) { throw 'Oversized ZIP contents' }
   }
 } finally { $zip.Dispose() }
-Expand-Archive -LiteralPath $env:FREEBO_PLUGIN_ZIP -DestinationPath $env:FREEBO_PLUGIN_EXTRACT -Force
+[System.IO.Compression.ZipFile]::ExtractToDirectory($env:FREEBO_PLUGIN_ZIP, $env:FREEBO_PLUGIN_EXTRACT)
 `;
 
 async function downloadBundle(destination, expectedSha256) {

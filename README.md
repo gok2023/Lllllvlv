@@ -47,7 +47,7 @@ Cine 仅打开当前视频，播放控制与进度同步的支持范围见 [播�
 
 ## Jellyfin 兼容与定制
 
-Windows 1.2.3 支持 Jellyfin 10.11.x 与 12.4 的独立插件构建，使用标准 API 认证，保留已有观影统计及作品关联。内置已验收的 HSS 混合最近添加与 Scoped Import 定向入库定制；旧版兼容包继续保留。配置、依赖和升级边界见 [长期维护文档](docs/jellyfin-maintenance.md)。
+Windows 1.2.4 支持 Jellyfin 10.11.x 与 12.4 的独立插件构建，使用标准 API 认证，保留已有观影统计及作品关联。内置已验收的 HSS 混合最近添加与 Scoped Import 定向入库定制；旧版兼容包继续保留。配置、依赖和升级边界见 [长期维护文档](docs/jellyfin-maintenance.md)。
 
 ## 快速开始
 
