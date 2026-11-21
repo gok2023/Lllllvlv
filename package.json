@@ -1,6 +1,6 @@
 {
   "name": "freebo",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "description": "A free, open-source desktop media client. Choose your local player, without subscriptions or format unlock fees.",
   "homepage": "https://github.com/gok2023/Lllllvlv",
@@ -147,9 +147,7 @@
         "to": "jellyfin-plugins",
         "filter": [
           "catalog.json",
-          "recommended-configurations/File Transformation_3.0.3.0/Jellyfin.Plugin.FileTransformation.xml",
-          "recommended-configurations/Home Screen Sections_3.0.4.0/Jellyfin.Plugin.HomeScreenSections.xml",
-          "recommended-configurations/Media Bar_3.0.2.0/Jellyfin.Plugin.MediaBar.xml"
+          "recommended-configurations/**/*"
         ]
       }
     ]
