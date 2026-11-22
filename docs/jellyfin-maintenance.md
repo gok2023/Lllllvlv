@@ -27,11 +27,11 @@ File Transformation、HSS、Media Bar 的原推荐模板与当前 12.4 配置顶
 ### HSS 定制来源
 
 - 旧源码：本机 `D:\TOOL\jellyfin\HomeScreenSections\home-screen-sections-3.0.4.0-src`。混合功能提交 `6975d3377e25f18a60b23962c7376a06649c0868`，汉化提交 `0a91943`；上游基线 `288a1f6ae7a9af3e4ac0d145b6285d84888d0ab1`。
-- 12.4 使用同一上游 3.0.4.0 正式源码，选择性复用 `RecentlyAddedInLibrarySection`、`UserSectionsDataCache`、`HomeScreenSectionService`、`loadSections.js` 与语言/设置资源。可移植补丁保存在 [hss-3.0.4.0-jf12.patch](../resources/jellyfin-plugins/customizations/hss-3.0.4.0-jf12.patch)，应用到干净上游源码，不叠加到已改过的树上。
+- 12.4 使用同一上游 3.0.4.0 正式源码，选择性复用 `RecentlyAddedInLibrarySection`、`UserSectionsDataCache`、`HomeScreenSectionService`、`loadSections.js` 与语言/设置资源。可移植补丁保存在 [hss-3.0.4.0-jf12.patch](../resources/jellyfin-plugins/customizations/hss-3.0.4.0-jf12.patch)，对应已验收源码提交 `1cf8db5b44e38204e5b7f65029ad81e6e1eba0a0`；应用到干净上游源码，不叠加到已改过的树上。
 - 重新构建时使用 `dotnet build src/Jellyfin.Plugin.HomeScreenSections/Jellyfin.Plugin.HomeScreenSections.csproj -c Release -p:JellyfinVersion=12.4.0 -p:JellyfinReferenceDir=<12.4 官方服务端目录>`；依赖 ABI 及目标程序集以实际产物检查为准，不改目标声明冒充新构建。
 - `mergeLibraries` 默认关闭；开启时只有一个最近添加栏目。权限与隐藏库过滤后，按 DateCreated 查询电影/单集，按现有设置归组，作品排序采用最新符合条件成员的入库时间，最后截取展示数。按需分页，完成边界同时间条目的稳定排序，避免固定截取单集导致归组后数量不足。
-- 沿用竖版卡片、预览、详情跳转、ElegantFin 样式及原刷新机制。12.4 构建使用 .NET 10 和 12.4 引用；前端预览使用 ApiClient 的认证请求。当前生产 DLL 的原安装元数据仍声明 ABI 12.0.0.0；内置定制包按实际编译引用保守标记为 12.4.0.0，二进制相同。
-- 用户已明确确认混合时间流实际验收通过。本轮仅把该产物纳入市场并保存补丁，没有重新开发或重复视觉验收。后续换上游时测试混合开关、归组、最新成员排序、满额与无重复、竖版样式、其他栏目及用户权限。
+- 沿用竖版卡片、预览、详情跳转、ElegantFin 样式及原刷新机制。12.4 另外提供可选栏目布局：我的媒体紧凑导航、继续观看动态焦点、接下来剧集队列；全局默认及用户逐栏覆盖均以原版布局为初始值，用户现有栏目顺序与配置不重置。12.4 构建使用 .NET 10 和 12.4 引用；前端预览使用 ApiClient 的认证请求。当前生产 DLL 的原安装元数据仍声明 ABI 12.0.0.0；内置定制包按实际编译引用保守标记为 12.4.0.0，二进制相同。
+- 用户已明确确认混合时间流和新栏目布局实际验收通过。内置 12.4 DLL 摘要为 `2754347d4235582fbb29566119af737790ca3113d66e8de312580448b36a8f43`。后续换上游时测试混合开关、归组、最新成员排序、满额与无重复、竖版样式、其他栏目及用户权限。
 
 ### Media Bar 12.x 轮播计时修复
 
