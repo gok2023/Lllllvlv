@@ -1,0 +1,1 @@
+560024e7088d23ad7a3a5fe731d624a6ebb1479d28e5c5b6056fca68207e92fc  jellyfin-plugins-windows-20261122-hss-layouts.zip
