@@ -33,6 +33,18 @@ File Transformation、HSS、Media Bar 的原推荐模板与当前 12.4 配置顶
 - 沿用竖版卡片、预览、详情跳转、ElegantFin 样式及原刷新机制。12.4 构建使用 .NET 10 和 12.4 引用；前端预览使用 ApiClient 的认证请求。当前生产 DLL 的原安装元数据仍声明 ABI 12.0.0.0；内置定制包按实际编译引用保守标记为 12.4.0.0，二进制相同。
 - 用户已明确确认混合时间流实际验收通过。本轮仅把该产物纳入市场并保存补丁，没有重新开发或重复视觉验收。后续换上游时测试混合开关、归组、最新成员排序、满额与无重复、竖版样式、其他栏目及用户权限。
 
+### Media Bar 12.x 轮播计时修复
+
+本修复适用于 Jellyfin 12.4 / Media Bar 3.0.2.0，构建保留官方英文名称和现有中文设置页。`loadSlideshowData()` 创建新的 `SlideTimer` 后立即 `stop()`，原脚本接着把 `STATE.slideshow.slideInterval` 置为 `null`，使后续 `updateCurrentSlide()` 无法重新启动该计时器。本定制只移除这一置空行，保留销毁计时器时必要的置空。上游 [#188](https://github.com/IAmParadox27/jellyfin-plugin-media-bar/issues/188) 报告 Jellyfin 12.1 / Media Bar 3.0.0.0 的进度到 100% 后停在同一海报；[#189](https://github.com/IAmParadox27/jellyfin-plugin-media-bar/issues/189) 报告设置周期结束仍不换卡；[#190](https://github.com/IAmParadox27/jellyfin-plugin-media-bar/pull/190) 讨论了只删除这一行，但该 PR 已关闭、未合并。本机 12.4 实际静态资源也包含该行，不能仅凭上游讨论认定已修复。
+
+12.x 的精确源码补丁见 [mediabar-3.0.2.0-jf12-timer.patch](../resources/jellyfin-plugins/customizations/mediabar-3.0.2.0-jf12-timer.patch)；原 [10.11 补丁](../resources/jellyfin-plugins/customizations/mediabar-3.0.2.0-timer.patch) 保持原字节。JF12 构建基于上游 `3.0.2.0` 标签 `c626924`：先获取该标签的正式源码与对应 12.x 依赖，按原版 Release 构建步骤编译，再应用既有中文资源定制和本补丁，重编生成 DLL。仅保留本次所需的源码改动，核对目标 ABI、程序集引用、嵌入配置、首页、CSS 与中文资源；实际 DLL 摘要以目录清单为准。
+
+升级时先检查新官方包的对应函数及实际返回的 `/MediaBar/slideshowpure.js`：若上游已修复或补丁上下文不再适用，丢弃补丁，不机械重放；若仍存在同一问题且上下文匹配，再应用并重新构建。升级后同步 Lllllvlv 本地安装版 `resources`、源码版 `payload`/`catalog.json`、GitHub `plugin-archives` 与 main 的归档锁定，并单独更新生产 Jellyfin 插件。
+
+Windows 托盘运行场景若控制台「重启」后脚本仍旧，先停止再启动服务器，并以实际 HTTP 返回的 `/MediaBar/slideshowpure.js` 校验；本版修复 JS 的 SHA-256 为 `D7EFB95C0DF814C47526EFC183FD4EBD17DB9C6122B5F51B3F6C1B8A3D598471`，仅用于核对此版实际响应，升级新官方版本后应重新建立摘要。本次控制台「重启」后进程 PID 未变、HTTP 仍返回旧脚本；停止托盘服务并重新启动后才加载新 DLL，因此须区分同进程重载与实际进程重启。用户已在 Chrome 和 Lllllvlv 安装版确认轮播按周期持续切换。
+
+Chrome 与 Lllllvlv 安装版均须验证多个轮播周期、进度归零与切换、切换后继续循环、手动切换后的暂停恢复及离开首页再进入；服务端 Active 或静态文件 200 不构成视觉验收。
+
 ### Scoped Import 定制来源
 
 源码：`D:\TOOL\jellyfin\scoped-import`，基线 `5b667b8`，当前仍为 0.2.0.3；本机未提交修改。项目 [docs/PROJECT.md](../../../jellyfin/scoped-import/docs/PROJECT.md) 是该插件安全契约及当前状态的权威来源。10.11 使用原 SDK/依赖锁；12.4 新增 `scripts/dependencies-jf12.lock.json`、`bootstrap-jf12.ps1`、`build-jf12.ps1`，分别使用官方 12.4 引用与 .NET 10.0.404。

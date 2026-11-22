@@ -13,7 +13,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const bundleUrl =
-  "https://raw.githubusercontent.com/gok2023/Lllllvlv/1e0421e656eead0f437efbe994ddd83b0bebf95b/20261121/jellyfin-plugins-windows-20261121.zip";
+  "https://raw.githubusercontent.com/gok2023/Lllllvlv/f2a699e4b94f07304b8a0af61d5869adb48ee436/20261121-mediabar-timer/jellyfin-plugins-windows-20261121-mediabar-timer.zip";
 const maxZipBytes = 256 * 1024 * 1024;
 const allowedRedirectHosts = new Set(["raw.githubusercontent.com"]);
 

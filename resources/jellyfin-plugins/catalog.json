@@ -356,7 +356,7 @@
       },
       "files": {
         "Jellyfin.Plugin.MediaBar.deps.json": "8dbdf5bc6c2ff60a29e08695a2b5a19753fe9e59089c9d1ba7f69480d8d9de04",
-        "Jellyfin.Plugin.MediaBar.dll": "a5f0c5e82af5e73d057fd747b6f2b19c2145cd051ce7537b696c8927f666d315",
+        "Jellyfin.Plugin.MediaBar.dll": "942df90f3c472d91bbfec39d4e51d9f059d099caedbdf2077b33d25ff287357f",
         "logo.png": "b9802449d49322e071e510297ea59feca51a03f3d9797843a3f6c9330d648939",
         "meta.json": "b002677170f9e4f8b894b84cd35f9b0c47cd451e3b75a7f2a1e8ea5f1750593b"
       },
