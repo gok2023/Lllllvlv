@@ -683,6 +683,55 @@ it("does not overwrite a restored work when the new server reuses its raw ItemId
   ).toBe(true);
 });
 
+it("does not let an in-flight refresh overwrite a newer manual link", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-link-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const target = episode(episodeIds[1]);
+  target.UserData.Played = false;
+  await store.refresh("server", auth, fetcher([episode(episodeIds[0]), target], [episodeIds[0]]));
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const reached = new Promise<void>((resolve) => { entered = resolve; });
+  const base = fetcher([episode(episodeIds[0]), target], [episodeIds[0]]);
+  let first = true;
+  const slow: typeof fetch = async (input, init) => {
+    if (first) { first = false; entered(); await held; }
+    return base(input, init);
+  };
+  const refresh = store.refresh("server", auth, slow);
+  await reached;
+  await store.linkWatchMedia("server", userId, episodeIds[0], episodeIds[1]);
+  release();
+  await expect(refresh).rejects.toThrow("观影档案已更新，请重新同步");
+  const saved = await store.get("server", userId);
+  expect(saved?.identityLinks?.[episodeIds[0]]).toBe(episodeIds[1]);
+  expect(saved?.records.every((record) => record.itemId === episodeIds[1])).toBe(true);
+});
+
+it("keeps a committed link when Playback Reporting fails on the next refresh", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-link-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const target = episode(episodeIds[1]);
+  target.UserData.Played = false;
+  const base = fetcher([episode(episodeIds[0]), target], [episodeIds[0]]);
+  await store.refresh("server", auth, base);
+  await store.linkWatchMedia("server", userId, episodeIds[0], episodeIds[1]);
+  const path = join(directory, "watch-statistics", `server-${userId}.json`);
+  const committed = await readFile(path, "utf8");
+  const broken: typeof fetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (url.pathname.endsWith("/submit_custom_query")) throw new Error("plugin unavailable");
+    return base(input, init);
+  };
+  await expect(store.refresh("server", auth, broken)).rejects.toThrow();
+  expect(await readFile(path, "utf8")).toBe(committed);
+});
+
 it("applies a reviewed legacy link immediately when provider IDs are unavailable", async () => {
   const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
   directories.push(directory);

@@ -88,7 +88,7 @@ import { UserDataLocation } from "./core/user-data-location";
 import { AppLifecycle } from "./core/app-lifecycle";
 import { UpdateManager, hasMacUpdateSignature, updateDisabledReason } from "./core/updates";
 import { autoUpdater } from "electron-updater";
-import { WatchStatisticsStore } from "./core/watch-statistics";
+import { WatchStatisticsStore, watchLinkSafeErrors } from "./core/watch-statistics";
 import { WatchStatisticsPathLocator } from "./core/watch-statistics-path";
 import { JellyfinPluginManager } from "./core/jellyfin-plugins";
 import { pluginVersion } from "./core/jellyfin-plugin-files";
@@ -1214,7 +1214,8 @@ function setupIPC() {
         }
         if (channel.startsWith("app:watch-statistics") && error instanceof Error)
           throw new Error(
-            channel.includes("import") || channel.includes("export") || channel.includes("review")
+            channel.includes("import") || channel.includes("export") || channel.includes("review") ||
+            (channel === "app:watch-statistics-link-media" && watchLinkSafeErrors.has(error.message))
               ? error.message
               : [
                     "Jellyfin 请求失败",
@@ -1224,6 +1225,9 @@ function setupIPC() {
                     "播放记录缺少必需字段",
                     "播放记录日期无效",
                     "Jellyfin 用户 ID 无效",
+                    "观影档案已更新，请重新同步",
+                    "跨服务播放记录身份冲突，请先人工核对档案",
+                    "估算基线身份冲突，请先人工核对档案",
                   ].some((prefix) => error.message.startsWith(prefix))
                 ? error.message
                 : "观影统计刷新失败，请检查 Jellyfin 和 Playback Reporting",
@@ -1337,7 +1341,7 @@ function setupIPC() {
       parsed.toItemId,
     );
     await publishWatch(snapshot, userId);
-    return (await watchStatistics.getView(server.id, userId)) ?? snapshot;
+    return snapshot;
   });
   handle("app:watch-statistics-status", () => watchStatus());
   const batchReviewSchema = z.object({
@@ -1405,8 +1409,8 @@ function setupIPC() {
     await watchPathLocator.clearManual(server.id, server.url);
     return watchPathLocator.status(server.id, server.url);
   });
-  handle("app:watch-statistics-refresh", () => {
-    void syncWatch("full").catch((error) => log(String(error)));
+  handle("app:watch-statistics-refresh", async () => {
+    await syncWatch("full");
   });
   handle("app:watch-statistics-settings", async (input) => {
     const settings = z

@@ -69,7 +69,7 @@
         const timeout = setTimeout(() => {
           pending.delete(id);
           reject(new Error("统计接口响应超时"));
-        }, 60000);
+        }, method === "refreshWatchStatistics" ? 30 * 60 * 1000 : 60000);
         pending.set(id, { resolve, reject, timeout });
         window.parent.postMessage({ channel: "watch-statistics", instance, id, method, args }, "*");
       });
@@ -147,7 +147,6 @@
   }
   const motion = new Map();
   function showSyncStatus(status) {
-    updateRefreshStatus(status);
     $("activityStatus").textContent = status.error
       ? `自动同步失败：${status.error}。已有统计仍可查看。`
       : status.syncing
@@ -168,31 +167,6 @@
       }
     } catch {
       $("pathFallback").hidden = true;
-    }
-  }
-  let manualRefresh = false;
-  let refreshPoll = null;
-  function updateRefreshStatus(status) {
-    if (!manualRefresh) return;
-    if (status.syncing) return;
-    manualRefresh = false;
-    clearInterval(refreshPoll);
-    refreshPoll = null;
-    $("refreshBtn").disabled = false;
-    $("refreshBtn").textContent = "重新同步";
-    if (status.error) {
-      $("refreshStatus").textContent = `刷新失败：${status.error}。已有统计数据仍可查看。`;
-      void updatePathFallback();
-    } else {
-      api
-        .getWatchStatistics()
-        .then((snapshot) => {
-          if (snapshot) applySnapshot(snapshot, !state.snapshot);
-          $("refreshStatus").textContent = "刷新完成，统计数据已更新。";
-        })
-        .catch((error) => {
-          $("refreshStatus").textContent = `读取刷新结果失败：${error?.message || String(error)}`;
-        });
     }
   }
   const esc = (value) =>
@@ -1852,7 +1826,7 @@
   async function load(refresh = false) {
     const button = $("refreshBtn");
     if (refresh) {
-      if (manualRefresh) return;
+      if (button.disabled) return;
       button.disabled = true;
       button.textContent = "正在同步……";
     }
@@ -1863,18 +1837,10 @@
       if (!api) throw new Error("统计接口不可用，请在应用内打开此页面");
       if (refresh) {
         await api.refreshWatchStatistics();
-        manualRefresh = true;
-        $("refreshStatus").textContent = "完整同步正在后台进行，完成后自动更新统计。";
-        refreshPoll = setInterval(() => {
-          api
-            .getWatchStatisticsStatus()
-            .then(updateRefreshStatus)
-            .catch((error) => {
-              $("refreshStatus").textContent =
-                `查询同步状态失败：${error?.message || String(error)}`;
-            });
-        }, 3000);
-        updateRefreshStatus(await api.getWatchStatisticsStatus());
+        const result = await api.getWatchStatistics();
+        if (!result) throw new Error("当前用户暂无可读取的观影统计数据，请确认登录状态");
+        applySnapshot(result, !state.snapshot);
+        $("refreshStatus").textContent = `刷新完成 · 最近刷新：${result.refreshedAt ? dateLabel(new Date(result.refreshedAt)) : "尚未刷新"}`;
         return;
       }
       const result = await api.getWatchStatistics();
@@ -1889,10 +1855,8 @@
       $("refreshStatus").textContent =
         `刷新失败：${error?.message || String(error)}${state.snapshot ? "。已有统计数据仍可查看。" : "。"}`;
     } finally {
-      if (!manualRefresh) {
-        button.disabled = false;
-        button.textContent = "重新同步";
-      }
+      button.disabled = false;
+      button.textContent = "重新同步";
     }
   }
   async function save() {
@@ -2033,11 +1997,40 @@
       $("linkMediaBtn").click();
     };
   });
-  const selectedDualEstimate = () => {
-    const backfill = state.snapshot?.backfill || [];
-    return [$("linkFrom").value, $("linkTo").value].every((id) =>
-      backfill.some((entry) => entry.itemId === id),
+  const linkValidation = () => {
+    const snapshot = state.snapshot;
+    const fromId = $("linkFrom").value;
+    const toId = $("linkTo").value;
+    const from = snapshot?.media?.find((item) => item.id === fromId);
+    const to = snapshot?.media?.find((item) => item.id === toId);
+    if (!from || !to || fromId === toId || from.type !== to.type)
+      return "请选择两项不同且类别相同的作品。";
+    if (toId.startsWith("legacy:") || (to.sourceId && to.sourceId !== snapshot.serverId))
+      return "目标作品必须属于当前服务。";
+    const providerIds = (item) => new Map(
+      Object.entries(item.providerIds || {})
+        .filter(([key, value]) => /^(tmdb|imdb|tvdb)$/i.test(key) && value)
+        .map(([key, value]) => [key.toLowerCase(), String(value).toLowerCase()]),
     );
+    const targetIds = providerIds(to);
+    if ([...providerIds(from)].some(([key, value]) => targetIds.has(key) && targetIds.get(key) !== value))
+      return "作品外部身份矛盾，不能关联。";
+    if (snapshot.identityLinks?.[fromId] && snapshot.identityLinks[fromId] !== toId)
+      return "旧作品已有不同关联。";
+    const bothHave = (items) =>
+      items.some((entry) => entry.itemId === fromId) &&
+      items.some((entry) => entry.itemId === toId);
+    if (
+      bothHave(snapshot.backfill || []) ||
+      bothHave((snapshot.confirmations || []).filter((entry) => entry.source === "initial")) ||
+      bothHave(snapshot.candidates || [])
+    )
+      return "两部作品已有相互冲突的观影资产，请先人工核对。";
+    const fromLibrary = snapshot.corrections?.items?.[fromId];
+    const toLibrary = snapshot.corrections?.items?.[toId];
+    if (fromLibrary && toLibrary && fromLibrary !== toLibrary)
+      return "作品媒体库修正冲突。";
+    return "";
   };
   $("linkMediaBtn").onclick = () => {
     const media = state.snapshot?.media || [];
@@ -2078,16 +2071,19 @@
       const conflict = pending.find(
         (entry) => entry.fromItemId === id && entry.toItemId === $("linkTo").value,
       );
-      const dualEstimate = selectedDualEstimate();
+      const validation = linkValidation();
+      const from = media.find((item) => item.id === id);
+      const to = media.find((item) => item.id === $("linkTo").value);
+      const episodeWarning = from?.type === "Episode" && to?.type === "Episode" &&
+        ((from.seasonNumber != null && to.seasonNumber != null && from.seasonNumber !== to.seasonNumber) ||
+          (from.episodeNumber != null && to.episodeNumber != null && from.episodeNumber !== to.episodeNumber))
+        ? " · 两边季集号不同，请核对确为同一单集。" : "";
       $("linkImpact").textContent =
         affected.map(([name, count]) => `${name} ${count}`).join(" · ") +
-        (conflict
-          ? ` · 待核对：${conflict.reason}${dualEstimate ? "" : "；请先核对双方历史资产"}。`
-          : "") +
-        (dualEstimate
-          ? " · 当前不能直接关联；请保留两边估算并分别核对历史证据。"
-          : "");
-      $("linkConfirm").disabled = !id || id === $("linkTo").value || dualEstimate;
+        (conflict ? ` · 待核对：${conflict.reason}。` : "") +
+        episodeWarning +
+        (validation ? ` · ${validation}` : "");
+      $("linkConfirm").disabled = !!validation;
     };
     $("linkFrom").onchange = updateImpact;
     $("linkTo").onchange = updateImpact;
@@ -2097,19 +2093,21 @@
   $("linkCancel").onclick = () => $("linkMediaDialog").close();
   $("linkConfirm").onclick = async () => {
     const button = $("linkConfirm");
+    if (button.disabled) return;
     button.disabled = true;
     try {
       const result = await api.linkWatchMedia({
         fromItemId: $("linkFrom").value,
         toItemId: $("linkTo").value,
       });
-      if (result) applySnapshot(result, true);
+      if (!result) throw new Error("作品关联未返回结果，请重新打开统计页面核对。");
+      applySnapshot(result, true);
       $("linkMediaDialog").close();
       $("refreshStatus").textContent = "作品关联已保存，观影资产已归入目标作品。";
     } catch (error) {
       $("linkError").textContent = error?.message || String(error);
     } finally {
-      button.disabled = selectedDualEstimate();
+      button.disabled = !!linkValidation();
     }
   };
   $("printBtn").onclick = () => window.print();

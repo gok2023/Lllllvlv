@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { rm } from "node:fs/promises";
-import { WatchStatisticsStore } from "../../../electron/core/watch-statistics";
+import { WatchStatisticsStore, watchLinkSafeErrors } from "../../../electron/core/watch-statistics";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -258,6 +258,83 @@ it("links restored history to a current item immediately", async () => {
   expect(linked.confirmations?.[0].itemId).toBe("newmovie");
   expect(linked.backfill[0].itemId).toBe("newmovie");
   expect(linked.identityLinks?.["legacy:old:movie"]).toBe("newmovie");
+});
+
+it("links all legacy assets once and embeds the old corrections file", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-link-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const user = "user";
+  const path = join(directory, "watch-statistics", `current-${user}.json`);
+  const media = (id: string, sourceId: string) => ({
+    id, sourceId, name: id, type: "Movie", genres: [], directors: [], played: false, playCount: 0,
+  });
+  await (await import("node:fs/promises")).mkdir(join(directory, "watch-statistics"));
+  await writeFile(path, JSON.stringify({
+    serverId: "current", refreshedAt: "2026-11-16T00:00:00.000Z",
+    media: [media("legacy:old:film", "old"), media("new-film", "current")],
+    records: [{ id: "record", itemId: "legacy:old:film", itemName: "old", itemType: "Movie", startAt: "2026-11-16T00:00:00.000Z", durationSec: 120 }],
+    backfill: [{ itemId: "legacy:old:film", durationSec: 300 }],
+    confirmations: [{ id: "confirmation", itemId: "legacy:old:film", source: "initial", evidenceIds: ["record"] }],
+    candidates: [{ itemId: "legacy:old:film", status: "ignored", evidenceIds: ["record"] }],
+    settings: { gapMinutes: 15, includeBackfill: true, excludeShort: false },
+  }));
+  await writeFile(`${path}.corrections.json`, JSON.stringify({ records: { record: "library" }, items: { "legacy:old:film": "library" } }));
+  const first = await store.linkWatchMedia("current", user, "legacy:old:film", "new-film");
+  const committed = await readFile(path, "utf8");
+  const second = await store.linkWatchMedia("current", user, "legacy:old:film", "new-film");
+  expect(await readFile(path, "utf8")).toBe(committed);
+  expect(second.refreshedAt).toBe(first.refreshedAt);
+  expect(first.records[0]).toMatchObject({ id: "record", itemId: "new-film" });
+  expect(second.backfill).toHaveLength(1);
+  expect(second.confirmations).toHaveLength(1);
+  expect(second.candidates).toHaveLength(1);
+  expect(second.corrections).toEqual({ records: { record: "library" }, items: { "new-film": "library" } });
+  expect((await store.get("current", user))?.corrections).toEqual(second.corrections);
+  await expect(store.linkWatchMedia("current", user, "new-film", "legacy:old:film"))
+    .rejects.toThrow("目标作品必须属于当前服务");
+});
+
+it("rejects independent assets before a manual link writes anything", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-link-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const path = join(directory, "watch-statistics", "current-user.json");
+  await (await import("node:fs/promises")).mkdir(join(directory, "watch-statistics"));
+  const media = ["old", "new"].map((id) => ({ id, name: id, type: "Movie", sourceId: "current", genres: [], directors: [], played: false, playCount: 0 }));
+  const snapshot = { serverId: "current", refreshedAt: "2026-11-16T00:00:00.000Z", media,
+    records: [], backfill: [{ itemId: "old", durationSec: 100 }, { itemId: "new", durationSec: 200 }],
+    settings: { gapMinutes: 15, includeBackfill: true, excludeShort: false } };
+  await writeFile(path, JSON.stringify(snapshot));
+  const error = await store.linkWatchMedia("current", "user", "old", "new")
+    .then(() => null, (failure: Error) => failure);
+  expect(error?.message).toContain("相互冲突的观影资产");
+  expect(watchLinkSafeErrors.has(error!.message)).toBe(true);
+  expect(watchLinkSafeErrors.has("两部作品已有相互冲突的观影资产，请先人工核对：private path")).toBe(false);
+  expect(JSON.parse(await readFile(path, "utf8"))).toEqual(snapshot);
+});
+
+it("rejects contradictory provider identity but permits reviewed episode numbers", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-link-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const path = join(directory, "watch-statistics", "current-user.json");
+  await (await import("node:fs/promises")).mkdir(join(directory, "watch-statistics"));
+  const media = [
+    { id: "old", name: "old", type: "Episode", sourceId: "current", seasonNumber: 1, episodeNumber: 1,
+      providerIds: { Imdb: "tt-old" }, genres: [], directors: [], played: false, playCount: 0 },
+    { id: "new", name: "new", type: "Episode", sourceId: "current", seasonNumber: 1, episodeNumber: 2,
+      providerIds: { Imdb: "tt-new" }, genres: [], directors: [], played: false, playCount: 0 },
+  ];
+  const snapshot = { serverId: "current", refreshedAt: "2026-11-16T00:00:00.000Z", media,
+    records: [], backfill: [], settings: { gapMinutes: 15, includeBackfill: true, excludeShort: false } };
+  await writeFile(path, JSON.stringify(snapshot));
+  await expect(store.linkWatchMedia("current", "user", "old", "new"))
+    .rejects.toThrow("作品外部身份矛盾");
+  media[1].providerIds.Imdb = "tt-old";
+  await writeFile(path, JSON.stringify(snapshot));
+  const linked = await store.linkWatchMedia("current", "user", "old", "new");
+  expect(linked.identityLinks?.old).toBe("new");
 });
 
 it("merges a foreign archive with one unique match and independent items on both sides", async () => {

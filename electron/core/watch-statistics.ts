@@ -312,6 +312,20 @@ function planBatch(snapshot: WatchStatisticsSnapshot, input: WatchBatchReviewInp
   return { confirmations, preview };
 }
 
+export const watchLinkSafeErrors = new Set([
+  "尚无观影统计数据",
+  "作品关联无效",
+  "目标作品必须属于当前服务",
+  "作品外部身份矛盾，不能关联",
+  "作品已有不同关联",
+  "作品关联形成循环",
+  "作品媒体库修正冲突",
+  "两部作品已有相互冲突的观影资产，请先人工核对",
+  "无法读取观影档案，作品关联未保存",
+  "无法备份观影档案，作品关联未保存",
+  "无法写入观影档案，作品关联未保存",
+]);
+
 export class WatchStatisticsStore {
   private writes = new Map<string, Promise<WatchStatisticsSnapshot>>();
   private currentSettings = new Map<string, WatchStatisticsSettings>();
@@ -898,13 +912,25 @@ export class WatchStatisticsStore {
     const next = previous
       .catch(() => {})
       .then(async () => {
-        const snapshot = await this.getView(serverId, userId);
+        const snapshot = await this.getView(serverId, userId).catch(() => {
+          throw new Error("无法读取观影档案，作品关联未保存");
+        });
         if (!snapshot) throw new Error("尚无观影统计数据");
         const from = snapshot.media.find((media) => media.id === fromItemId);
         const to = snapshot.media.find((media) => media.id === toItemId);
         if (!from || !to || from.id === to.id || from.type !== to.type)
           throw new Error("作品关联无效");
-        if (to.sourceId && to.sourceId !== serverId) throw new Error("目标作品必须属于当前服务");
+        if (to.id.startsWith("legacy:") || (to.sourceId && to.sourceId !== serverId))
+          throw new Error("目标作品必须属于当前服务");
+        if (
+          snapshot.identityLinks?.[fromItemId] === toItemId &&
+          !snapshot.records.some((entry) => entry.itemId === fromItemId) &&
+          !snapshot.backfill.some((entry) => entry.itemId === fromItemId) &&
+          !(snapshot.confirmations ?? []).some((entry) => entry.itemId === fromItemId) &&
+          !(snapshot.candidates ?? []).some((entry) => entry.itemId === fromItemId) &&
+          !snapshot.corrections?.items[fromItemId]
+        ) return snapshot;
+        if (!providerCompatible(from, to)) throw new Error("作品外部身份矛盾，不能关联");
         if (snapshot.identityLinks?.[fromItemId] && snapshot.identityLinks[fromItemId] !== toItemId)
           throw new Error("作品已有不同关联");
         let cursor: string | undefined = toItemId;
@@ -931,7 +957,9 @@ export class WatchStatisticsStore {
             (snapshot.candidates ?? []).some((entry) => entry.itemId === toItemId))
         )
           throw new Error("两部作品已有相互冲突的观影资产，请先人工核对");
-        await this.dailyBackup(path, snapshot);
+        await this.dailyBackup(path, snapshot).catch(() => {
+          throw new Error("无法备份观影档案，作品关联未保存");
+        });
         snapshot.identityLinks = { ...snapshot.identityLinks, [fromItemId]: toItemId };
         for (const [alias, target] of Object.entries(snapshot.identityLinks))
           if (target === fromItemId) snapshot.identityLinks[alias] = toItemId;
@@ -955,7 +983,9 @@ export class WatchStatisticsStore {
           delete snapshot.corrections.items[fromItemId];
         }
         snapshot.refreshedAt = new Date().toISOString();
-        await this.atomicWrite(path, JSON.stringify(snapshot));
+        await this.atomicWrite(path, JSON.stringify(snapshot)).catch(() => {
+          throw new Error("无法写入观影档案，作品关联未保存");
+        });
         return snapshot;
       });
     this.writes.set(path, next);
@@ -1232,6 +1262,7 @@ export class WatchStatisticsStore {
       try {
         const response = await fetcher(`${base}/${path}`, {
           method: body ? "POST" : "GET",
+          cache: "no-store",
           headers: {
             Authorization: jellyfinAuthorization(auth.token),
             Accept: "application/json",
@@ -1289,6 +1320,7 @@ export class WatchStatisticsStore {
           const params = new URLSearchParams({
             ParentId: libraryId,
             Recursive: "true",
+            CollapseBoxSetItems: "false",
             EnableUserData: "true",
             EnableImages: "false",
             IncludeItemTypes: "Movie,Series,Season,Episode",

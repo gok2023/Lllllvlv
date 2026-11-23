@@ -32,6 +32,7 @@ it("grows an empty archive through playback, new seasons, remapping and restored
   const events: Array<[string, string, string, number, string?]> = [];
   const fetcher: typeof fetch = (async (input, init) => {
     expect(new Headers(init?.headers).get("Authorization")).toBe('MediaBrowser Token="synthetic"');
+    expect(init?.cache).toBe("no-store");
     const url = new URL(input instanceof Request ? input.url : input.toString());
     let body: unknown;
     if (url.pathname.endsWith("/Views")) body = { Items: [{ Id: ids.library, Name: "动漫库" }] };
@@ -98,6 +99,14 @@ it("grows an empty archive through playback, new seasons, remapping and restored
   expect(played.backfill.find((entry) => entry.itemId === ids.movie)?.baselineRecordIds).toContain(
     recordId,
   );
+  (media[0].UserData as { Played: boolean }).Played = false;
+  const unchecked = await store.refresh("old", auth, fetcher);
+  expect(unchecked.confirmations?.find((entry) => entry.id === confirmationId)).toBeDefined();
+  expect(unchecked.backfill.find((entry) => entry.itemId === ids.movie)?.durationSec).toBe(6000);
+  (media[0].UserData as { Played: boolean }).Played = true;
+  const rechecked = await store.refresh("old", auth, fetcher);
+  expect(rechecked.confirmations?.filter((entry) => entry.itemId === ids.movie)).toHaveLength(1);
+  expect(rechecked.backfill.filter((entry) => entry.itemId === ids.movie)).toHaveLength(1);
   media.push(
     item(ids.special, "Episode", { SeriesId: ids.series, ParentIndexNumber: 0, IndexNumber: 1 }),
   );
