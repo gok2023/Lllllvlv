@@ -3,6 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const api = (() => {
     let nextId = 0;
+    const instance = crypto.randomUUID();
     const pending = new Map();
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent || event.data?.channel !== "watch-statistics") return;
@@ -33,6 +34,7 @@
       }
       if (event.data.event === "updated") {
         if (event.data.snapshot) applySnapshot(event.data.snapshot, !state.snapshot);
+        else window.location.reload();
         return;
       }
       if (event.data.event === "status") {
@@ -51,7 +53,7 @@
         return;
       }
       const request = pending.get(event.data.id);
-      if (!request) return;
+      if (!request || event.data.instance !== instance) return;
       pending.delete(event.data.id);
       clearTimeout(request.timeout);
       if (event.data.error) request.reject(new Error(event.data.error));
@@ -69,7 +71,7 @@
           reject(new Error("统计接口响应超时"));
         }, 60000);
         pending.set(id, { resolve, reject, timeout });
-        window.parent.postMessage({ channel: "watch-statistics", id, method, args }, "*");
+        window.parent.postMessage({ channel: "watch-statistics", instance, id, method, args }, "*");
       });
     return {
       getWatchStatistics: () => call("getWatchStatistics"),
@@ -374,9 +376,10 @@
         end = r.clippedEnd;
       total += r.clippedSeconds;
       while (t < end) {
-        const next = new Date(t);
-        next.setMinutes(0, 0, 0);
-        next.setHours(next.getHours() + 1);
+        // Advance on the timeline so the repeated hour at a DST fallback is counted twice.
+        const next = new Date(
+          +t - t.getMinutes() * 60000 - t.getSeconds() * 1000 - t.getMilliseconds() + 3600000,
+        );
         const stop = new Date(Math.min(+next, +end)),
           sec = (stop - t) / 1000;
         daily.set(dayKey(t), (daily.get(dayKey(t)) || 0) + sec);
@@ -1164,9 +1167,10 @@
       for (let y = rangeStart.getFullYear(); y <= now().getFullYear(); y++) years.add(y);
     if (state.period === "all") {
       for (const record of rawRecords()) {
+        if (record.start > now()) continue;
         for (
           let year = record.start.getFullYear();
-          year <= new Date(+record.start + record.seconds * 1000).getFullYear();
+          year <= new Date(Math.min(+record.start + record.seconds * 1000, +now())).getFullYear();
           year++
         )
           years.add(year);
@@ -1191,7 +1195,11 @@
     const first = new Date(year, 0, 1),
       monday = new Date(first);
     monday.setDate(1 - ((first.getDay() + 6) % 7));
-    const weeks = Math.ceil((+new Date(year + 1, 0, 1) - monday) / 604800000);
+    const weeks = Math.ceil(
+      (Date.UTC(year + 1, 0, 1) -
+        Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate())) /
+        604800000,
+    );
     let previous = -1;
     for (let w = 0; w < weeks; w++) {
       const label = document.createElement("span");
@@ -1564,20 +1572,42 @@
   $("libraryReset").onclick = () => void submitLibrary(null);
   function render() {
     if (!state.snapshot) return;
+    const unresolved = state.snapshot.identityConflicts?.length || 0;
+    $("linkMediaBtn").textContent = unresolved ? `作品身份待核对 ${unresolved} 项` : "关联旧作品";
+    const mediaTypes = new Map(state.snapshot.media.map((item) => [item.id, item.type]));
+    const conflictTypes = new Set(
+      (state.snapshot.identityConflicts || []).flatMap((entry) =>
+        [mediaTypes.get(entry.fromItemId), mediaTypes.get(entry.toItemId)].filter(Boolean),
+      ),
+    );
+    document.querySelectorAll(".kpi-conflict").forEach((button) => {
+      button.hidden =
+        state.period !== "all" ||
+        !unresolved ||
+        (button.dataset.stat !== "time" && !conflictTypes.has(button.dataset.stat));
+    });
     const expandedRows = new Set(
       [...document.querySelectorAll("#activityRows tr")]
         .filter((row) => row.querySelector("details[open]"))
         .map((row) => row.dataset.activityKey),
     );
     mediaMapCache = mediaMap();
+    const backfillByItem = new Map();
+    if (state.period === "all")
+      for (const entry of state.snapshot.backfill || []) {
+        if (!entry.baselineAt) continue;
+        const key = String(entry.itemId);
+        const group = backfillByItem.get(key) || [];
+        group.push(entry);
+        backfillByItem.set(key, group);
+      }
     const records = selectedRecords(),
       effectiveRecords =
         state.period === "all"
           ? records.filter(
               (r) =>
-                !(state.snapshot?.backfill || []).some(
+                !(backfillByItem.get(String(r.itemId)) || []).some(
                   (b) =>
-                    b.itemId === r.itemId &&
                     b.baselineAt &&
                     new Date(r.startAt) <= new Date(b.baselineAt) &&
                     !(b.baselineRecordIds || []).includes(r.id),
@@ -1997,6 +2027,18 @@
   }
   $("importConfirm").onclick = () => void submitImport("replace");
   $("importMerge").onclick = () => void submitImport("merge");
+  document.querySelectorAll(".kpi-conflict").forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      $("linkMediaBtn").click();
+    };
+  });
+  const selectedDualEstimate = () => {
+    const backfill = state.snapshot?.backfill || [];
+    return [$("linkFrom").value, $("linkTo").value].every((id) =>
+      backfill.some((entry) => entry.itemId === id),
+    );
+  };
   $("linkMediaBtn").onclick = () => {
     const media = state.snapshot?.media || [];
     const options = media
@@ -2011,6 +2053,19 @@
     $("linkTo").innerHTML = options;
     $("linkTo").selectedIndex = Math.min(1, media.length - 1);
     $("linkError").textContent = "";
+    const pending = state.snapshot?.identityConflicts || [];
+    const sameId = pending.filter((entry) => entry.fromItemId === entry.toItemId);
+    if (sameId.length)
+      $("linkError").textContent =
+        `${sameId.length} 项同 ID 外部身份改变；请核对原作品与当前刮削信息，不能通过关联旧作品解决。`;
+    const firstPending = pending.find(
+      (entry) =>
+        media.some((m) => m.id === entry.fromItemId) && media.some((m) => m.id === entry.toItemId),
+    );
+    if (firstPending) {
+      $("linkFrom").value = firstPending.fromItemId;
+      $("linkTo").value = firstPending.toItemId;
+    }
     const updateImpact = () => {
       const id = $("linkFrom").value;
       const snapshot = state.snapshot;
@@ -2020,8 +2075,19 @@
         ["确认", snapshot?.confirmations?.filter((x) => x.itemId === id).length || 0],
         ["待处理", snapshot?.candidates?.filter((x) => x.itemId === id).length || 0],
       ];
-      $("linkImpact").textContent = affected.map(([name, count]) => `${name} ${count}`).join(" · ");
-      $("linkConfirm").disabled = !id || id === $("linkTo").value;
+      const conflict = pending.find(
+        (entry) => entry.fromItemId === id && entry.toItemId === $("linkTo").value,
+      );
+      const dualEstimate = selectedDualEstimate();
+      $("linkImpact").textContent =
+        affected.map(([name, count]) => `${name} ${count}`).join(" · ") +
+        (conflict
+          ? ` · 待核对：${conflict.reason}${dualEstimate ? "" : "；请先核对双方历史资产"}。`
+          : "") +
+        (dualEstimate
+          ? " · 当前不能直接关联；请保留两边估算并分别核对历史证据。"
+          : "");
+      $("linkConfirm").disabled = !id || id === $("linkTo").value || dualEstimate;
     };
     $("linkFrom").onchange = updateImpact;
     $("linkTo").onchange = updateImpact;
@@ -2043,7 +2109,7 @@
     } catch (error) {
       $("linkError").textContent = error?.message || String(error);
     } finally {
-      button.disabled = false;
+      button.disabled = selectedDualEstimate();
     }
   };
   $("printBtn").onclick = () => window.print();

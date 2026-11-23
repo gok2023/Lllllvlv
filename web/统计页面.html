@@ -477,6 +477,20 @@
         line-height: 1.55;
         color: var(--muted);
       }
+      .kpi-conflict {
+        display: block;
+        margin-top: 4px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--accent);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .kpi-conflict[hidden] {
+        display: none;
+      }
       .quiet-strong {
         color: var(--accent);
       }
@@ -1379,16 +1393,19 @@
             <div class="kpi-label">累计观影时长</div>
             <div class="kpi-value" id="totalHours">—</div>
             <div class="kpi-foot" id="timeFoot">实际播放与历史补录分别统计</div>
+            <button class="kpi-conflict" data-stat="time" type="button" hidden>暂定 · 作品身份待核对，查看冲突</button>
           </div>
           <div class="panel kpi">
             <div class="kpi-label">累计观看电影</div>
             <div class="kpi-value" id="moviesCount">—</div>
             <div class="kpi-foot">已确认部次 · 点击查看不同电影与刷次</div>
+            <button class="kpi-conflict" data-stat="Movie" type="button" hidden>暂定 · 作品身份待核对，查看冲突</button>
           </div>
           <div class="panel kpi">
             <div class="kpi-label">累计观看剧集</div>
             <div class="kpi-value" id="episodesCount">—</div>
             <div class="kpi-foot">已确认集次 · 点击查看不同单集与刷次</div>
+            <button class="kpi-conflict" data-stat="Episode" type="button" hidden>暂定 · 作品身份待核对，查看冲突</button>
           </div>
           <div class="panel kpi">
             <div class="kpi-label">观影天数</div>

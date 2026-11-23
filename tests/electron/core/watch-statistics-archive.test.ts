@@ -11,6 +11,60 @@ afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
 });
 
+it("imports legacy repeated ignored evidence alongside an active candidate without multiplying it", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-archive-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const path = join(directory, "legacy.json");
+  const snapshot = {
+    serverId: "same",
+    refreshedAt: "2026-11-16T00:00:00.000Z",
+    media: [],
+    records: [],
+    backfill: [],
+    settings: { gapMinutes: 15, includeBackfill: true, excludeShort: false },
+    candidates: [
+      { itemId: "item", evidenceIds: ["r1"], status: "ignored" },
+      { itemId: "item", evidenceIds: ["r2"], status: "ignored" },
+      { itemId: "item", evidenceIds: ["r3"], status: "pending" },
+    ],
+  };
+  await writeFile(path, JSON.stringify({ version: 1, snapshot }));
+  const first = await store.importData("same", "u", path);
+  expect(first.candidates).toEqual([
+    { itemId: "item", evidenceIds: ["r1", "r2"], status: "ignored" },
+    { itemId: "item", evidenceIds: ["r3"], status: "pending" },
+  ]);
+  const repeated = await store.importData("same", "u", path, "merge");
+  expect(repeated.candidates).toEqual(first.candidates);
+  snapshot.candidates[2].evidenceIds = ["r1"];
+  await writeFile(path, JSON.stringify({ version: 1, snapshot }));
+  await expect(store.importData("same", "u", path, "merge")).rejects.toThrow("candidate-evidence");
+});
+
+it("keeps a namespaced legacy identity through a second server migration", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-archive-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const path = join(directory, "a.json");
+  const snapshot = {
+    serverId: "A",
+    refreshedAt: "2026-11-16T00:00:00.000Z",
+    media: [],
+    records: [],
+    backfill: [{ itemId: "film", durationSec: 100 }],
+    settings: { gapMinutes: 15, includeBackfill: true, excludeShort: false },
+  };
+  await writeFile(path, JSON.stringify({ version: 2, snapshot }));
+  const onB = await store.importData("B", "u", path);
+  expect(onB.backfill[0].itemId).toBe("legacy:A:film");
+  const bPath = join(directory, "b.json");
+  await store.exportData("B", "u", bPath);
+  const onC = await store.importData("C", "u", bPath);
+  expect(onC.backfill[0].itemId).toBe("legacy:A:film");
+  expect((await store.importData("C", "u", bPath, "merge")).backfill).toEqual(onC.backfill);
+});
+
 it("exports a checked archive, rejects corruption and preserves the current snapshot", async () => {
   const directory = await mkdtemp(join(tmpdir(), "freebo-archive-"));
   directories.push(directory);
@@ -67,12 +121,23 @@ it("restores the prior snapshot when the replacement write fails", async () => {
   await writeFile(archivePath, JSON.stringify({ version: 2, snapshot }));
   await store.importData("same", userId, archivePath);
   const before = await store.get("same", userId);
+  const destination = join(directory, "watch-statistics", `same-${userId}.json`);
+  const originalWrite = (
+    store as unknown as { atomicWrite: (path: string, data: string) => Promise<void> }
+  ).atomicWrite.bind(store);
+  let failDestinationOnce = true;
   const spy = vi
     .spyOn(
       store as unknown as { atomicWrite: (path: string, data: string) => Promise<void> },
       "atomicWrite",
     )
-    .mockRejectedValueOnce(new Error("injected write failure"));
+    .mockImplementation((target, data) => {
+      if (target === destination && failDestinationOnce) {
+        failDestinationOnce = false;
+        return Promise.reject(new Error("injected write failure"));
+      }
+      return originalWrite(target, data);
+    });
   await expect(store.importData("same", userId, archivePath)).rejects.toThrow(
     "injected write failure",
   );

@@ -506,8 +506,9 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
     return () => appearance.disconnect();
   }, [syncVisualTheme]);
   useEffect(() => {
+    let active = true;
     const unsubscribe = runtime.api.onWatchStatisticsUpdated((snapshot) => {
-      if (snapshot.serverId !== serverId) return;
+      if (snapshot && snapshot.serverId !== serverId) return;
       frame.current?.contentWindow?.postMessage(
         { channel: "watch-statistics", event: "updated", snapshot },
         "*",
@@ -522,13 +523,26 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
       const message = event.data;
-      if (!message || message.channel !== "watch-statistics" || typeof message.id !== "number")
+      if (
+        !message ||
+        message.channel !== "watch-statistics" ||
+        typeof message.id !== "number" ||
+        typeof message.instance !== "string"
+      )
         return;
-      const reply = (response: { result?: unknown; error?: string }) =>
-        frame.current?.contentWindow?.postMessage(
-          { channel: "watch-statistics", id: message.id, ...response },
-          "*",
-        );
+      const source = event.source;
+      const reply = (response: { result?: unknown; error?: string }) => {
+        if (active && source && source === frame.current?.contentWindow)
+          source.postMessage(
+            {
+              channel: "watch-statistics",
+              id: message.id,
+              instance: message.instance,
+              ...response,
+            },
+            "*",
+          );
+      };
       let operation: Promise<unknown>;
       try {
         switch (message.method) {
@@ -588,6 +602,7 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
     };
     window.addEventListener("message", onMessage);
     return () => {
+      active = false;
       window.removeEventListener("message", onMessage);
       unsubscribe();
       unsubscribeStatus();
@@ -608,6 +623,7 @@ export function StatisticsFrame({ visible }: { visible: boolean }) {
       )}
     >
       <iframe
+        key={serverId ?? "no-jellyfin-server"}
         ref={frame}
         title="观影统计"
         src="./watch-statistics.html"

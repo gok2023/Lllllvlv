@@ -215,14 +215,16 @@ async function jellyfinPluginSessionToken(server: Server, jellyfinId: string) {
 const watchStatistics = new WatchStatisticsStore(userDataPath, watchPathLocator);
 let watchRefresh: Promise<unknown> | undefined;
 let watchRefreshMode: "full" | "incremental" | "import" | undefined;
+let watchRefreshScope: string | undefined;
 let watchQueuedFull: Promise<WatchStatisticsSnapshot> | undefined;
 let watchAuth:
   | { serverId: string; auth: { baseUrl: string; userId: string; token: string } }
   | undefined;
-let watchImportPath: string | undefined;
-let watchImportFileDigest: string | undefined;
-let watchImportTargetDigest: string | undefined;
-let watchImportScope: string | undefined;
+let watchImportPreview:
+  | Readonly<{ path: string; fileDigest: string; targetDigest: string; scope: string }>
+  | undefined;
+let watchImportGeneration = 0;
+let watchSignedOutServerId: string | undefined;
 const pendingWatchUserId = "00000000000000000000000000000000";
 let watchPlaying = false;
 let watchStoppedAt = 0;
@@ -230,6 +232,7 @@ let watchLastCheck = 0;
 let watchLastFallback = 0;
 let watchError: string | undefined;
 let watchBinding: Promise<void> | undefined;
+let watchBindingScope: string | undefined;
 function watchStatus() {
   return { playing: watchPlaying, syncing: !!watchRefresh || !!watchQueuedFull, error: watchError };
 }
@@ -259,6 +262,7 @@ async function rememberWatchUser(serverId: string, userId: string) {
   await writeFile(watchUserPath, JSON.stringify({ serverId, userId }));
 }
 async function watchUserId(serverId: string) {
+  if (watchSignedOutServerId === serverId) return undefined;
   if (watchAuth?.serverId === serverId) return watchAuth.auth.userId;
   try {
     const remembered = JSON.parse(
@@ -301,22 +305,62 @@ async function watchIdentity() {
       /* Jellyfin may still be loading. */
     }
   }
-  if (!auth?.baseUrl || !auth?.userId || !auth?.token)
+  if (
+    (!watchView || watchView.webContents.isDestroyed()) &&
+    (!auth?.baseUrl || !auth?.userId || !auth?.token)
+  )
     auth = watchAuth?.serverId === server.id ? watchAuth.auth : undefined;
   if (
-    !auth?.baseUrl ||
-    !auth?.userId ||
-    !auth?.token ||
-    new URL(auth.baseUrl).origin !== new URL(server.url).origin
-  )
+    watchView &&
+    !watchView.webContents.isDestroyed() &&
+    (!auth?.baseUrl || !auth?.userId || !auth?.token)
+  ) {
+    watchSignedOutServerId = server.id;
+    if (watchAuth?.serverId === server.id) {
+      watchAuth = undefined;
+      if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", null);
+    }
+  }
+  let invalidOrigin = false;
+  if (auth?.baseUrl) {
+    try {
+      invalidOrigin = new URL(auth.baseUrl).origin !== new URL(server.url).origin;
+    } catch {
+      invalidOrigin = true;
+    }
+  }
+  if (watchView && !watchView.webContents.isDestroyed() && invalidOrigin) {
+    watchSignedOutServerId = server.id;
+    if (watchAuth?.serverId === server.id) {
+      watchAuth = undefined;
+      if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", null);
+    }
+  }
+  if (!auth?.baseUrl || !auth?.userId || !auth?.token || invalidOrigin)
     throw new Error("请先在「服务」中登录 Jellyfin");
-  if (!/^[0-9a-f]{32}$/i.test(auth.userId.replace(/-/g, "")))
+  if (!/^[0-9a-f]{32}$/i.test(auth.userId.replace(/-/g, ""))) {
+    if (watchView && !watchView.webContents.isDestroyed()) {
+      watchSignedOutServerId = server.id;
+      if (watchAuth?.serverId === server.id) {
+        watchAuth = undefined;
+        if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", null);
+      }
+    }
     throw new Error("Jellyfin 用户 ID 无效");
+  }
+  watchSignedOutServerId = undefined;
   const previousWatchServerId = watchAuth?.serverId;
+  const previousWatchUserId = watchAuth?.auth.userId;
   watchAuth = { serverId: server.id, auth };
-  if (previousWatchServerId !== server.id) publish();
+  if (previousWatchServerId !== server.id || previousWatchUserId !== auth.userId) {
+    publish();
+    if (isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", null);
+  }
   void rememberWatchUser(server.id, auth.userId).catch((error) => log(String(error)));
+  const bindingScope = `${server.id}:${auth.userId}`;
+  if (watchBinding && watchBindingScope !== bindingScope) await watchBinding;
   if (!watchBinding) {
+    watchBindingScope = bindingScope;
     watchBinding = watchStatistics
       .bindImported(server.id, pendingWatchUserId, auth.userId)
       .then(async (snapshot) => {
@@ -324,6 +368,7 @@ async function watchIdentity() {
       })
       .finally(() => {
         watchBinding = undefined;
+        watchBindingScope = undefined;
       });
   }
   await watchBinding;
@@ -332,14 +377,33 @@ async function watchIdentity() {
 async function publishWatch(snapshot: WatchStatisticsSnapshot, userId: string) {
   if (!isLiveWindow(window)) return;
   try {
+    if (
+      selectedWatchServer()?.id !== snapshot.serverId ||
+      watchAuth?.serverId !== snapshot.serverId ||
+      watchAuth.auth.userId !== userId
+    )
+      return;
     const view = await watchStatistics.getView(snapshot.serverId, userId);
-    if (view && isLiveWindow(window)) window.webContents.send("app:watch-statistics-updated", view);
+    if (
+      view &&
+      isLiveWindow(window) &&
+      selectedWatchServer()?.id === snapshot.serverId &&
+      watchAuth?.serverId === snapshot.serverId &&
+      watchAuth.auth.userId === userId
+    )
+      window.webContents.send("app:watch-statistics-updated", view);
   } catch (error) {
     log(`观影统计更新事件失败：${String(error)}`);
   }
 }
 async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsSnapshot> {
+  const { server, auth } = await watchIdentity();
+  const scope = `${server.id}:${auth.userId}`;
   if (watchRefresh) {
+    if (watchRefreshScope !== scope) {
+      await watchRefresh.catch(() => {});
+      return syncWatch(mode);
+    }
     if (watchRefreshMode === "import") {
       await watchRefresh.catch(() => {});
       return syncWatch(mode);
@@ -357,7 +421,6 @@ async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsS
     return watchQueuedFull;
   }
   const task = (async () => {
-    const { server, auth } = await watchIdentity();
     const previous = await watchStatistics.get(server.id, auth.userId);
     const result = await watchStatistics.refresh(
       server.id,
@@ -367,14 +430,37 @@ async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsS
     );
     if (
       !previous ||
-      JSON.stringify([previous.records, previous.media, previous.backfill, previous.libraries]) !==
-        JSON.stringify([result.records, result.media, result.backfill, result.libraries])
+      JSON.stringify([
+        previous.records,
+        previous.media,
+        previous.backfill,
+        previous.libraries,
+        previous.confirmations,
+        previous.candidates,
+        previous.corrections,
+        previous.settings,
+        previous.identityLinks,
+        previous.identityConflicts,
+      ]) !==
+        JSON.stringify([
+          result.records,
+          result.media,
+          result.backfill,
+          result.libraries,
+          result.confirmations,
+          result.candidates,
+          result.corrections,
+          result.settings,
+          result.identityLinks,
+          result.identityConflicts,
+        ])
     )
       await publishWatch(result, auth.userId);
     return result;
   })();
   watchRefresh = task;
   watchRefreshMode = mode;
+  watchRefreshScope = scope;
   watchError = undefined;
   publishWatchStatus();
   try {
@@ -386,6 +472,7 @@ async function syncWatch(mode: "full" | "incremental"): Promise<WatchStatisticsS
     if (watchRefresh === task) {
       watchRefresh = undefined;
       watchRefreshMode = undefined;
+      watchRefreshScope = undefined;
       publishWatchStatus();
     }
   }
@@ -1339,61 +1426,69 @@ function setupIPC() {
     return snapshot ? watchStatistics.getView(server.id, userId) : null;
   });
   handle("app:watch-statistics-import-preview", async () => {
+    const generation = ++watchImportGeneration;
+    watchImportPreview = undefined;
     const chosen = await dialog.showOpenDialog(window!, {
       properties: ["openFile"],
       filters: [{ name: "观影统计档案与备份", extensions: ["json", "backup"] }],
     });
     if (chosen.canceled || !chosen.filePaths[0]) return null;
-    watchImportPath = chosen.filePaths[0];
+    const path = chosen.filePaths[0];
     const server = watchServer();
     await watchIdentity().catch(() => {});
     const userId = await watchUserId(server.id);
     const targetUserId = userId ?? pendingWatchUserId;
-    const preview = await watchStatistics.previewImport(watchImportPath, server.id, targetUserId);
-    watchImportFileDigest = createHash("sha256")
-      .update(readFileSync(watchImportPath))
+    const beforeFileDigest = createHash("sha256").update(readFileSync(path)).digest("hex");
+    const beforeTargetDigest = createHash("sha256")
+      .update(JSON.stringify(await watchStatistics.getView(server.id, targetUserId)))
       .digest("hex");
+    const preview = await watchStatistics.previewImport(path, server.id, targetUserId);
+    const fileDigest = createHash("sha256").update(readFileSync(path)).digest("hex");
     const target = await watchStatistics.getView(server.id, targetUserId);
-    watchImportTargetDigest = createHash("sha256").update(JSON.stringify(target)).digest("hex");
-    watchImportScope = `${server.id}:${targetUserId}`;
+    const targetDigest = createHash("sha256").update(JSON.stringify(target)).digest("hex");
+    if (beforeFileDigest !== fileDigest || beforeTargetDigest !== targetDigest)
+      throw new Error("档案在预览期间发生变化，请重新选择并预览");
+    if (generation !== watchImportGeneration)
+      throw new Error("已有新的导入预览请求，请重新选择并预览");
+    watchImportPreview = Object.freeze({
+      path,
+      fileDigest,
+      targetDigest,
+      scope: `${server.id}:${targetUserId}`,
+    });
     return preview;
   });
   handle("app:watch-statistics-import", async (input) => {
     const mode = z.enum(["replace", "merge"]).parse(input);
-    if (!watchImportPath) throw new Error("请先选择导入文件");
+    const pending = watchImportPreview;
+    if (!pending) throw new Error("请先选择并成功预览导入文件");
+    watchImportPreview = undefined;
+    ++watchImportGeneration;
     const server = watchServer();
     await watchIdentity().catch(() => {});
     const userId = await watchUserId(server.id);
     const targetUserId = userId ?? pendingWatchUserId;
-    const path = watchImportPath;
-    if (`${server.id}:${targetUserId}` !== watchImportScope)
+    if (`${server.id}:${targetUserId}` !== pending.scope)
       throw new Error("当前服务或用户在预览后发生变化，请重新选择并预览");
-    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== watchImportFileDigest)
-      throw new Error("导入文件在预览后发生变化，请重新选择并预览");
-    const target = await watchStatistics.getView(server.id, targetUserId);
-    if (
-      createHash("sha256").update(JSON.stringify(target)).digest("hex") !== watchImportTargetDigest
-    )
-      throw new Error("当前观影档案在预览后发生变化，请重新预览");
+    const expected = { fileDigest: pending.fileDigest, targetDigest: pending.targetDigest };
     const previous = watchRefresh;
     const task =
       previous
         ?.catch(() => {})
-        .then(() => watchStatistics.importData(server.id, targetUserId, path, mode)) ??
-      watchStatistics.importData(server.id, targetUserId, path, mode);
+        .then(() =>
+          watchStatistics.importData(server.id, targetUserId, pending.path, mode, expected),
+        ) ?? watchStatistics.importData(server.id, targetUserId, pending.path, mode, expected);
     watchRefresh = task;
     watchRefreshMode = "import";
+    watchRefreshScope = `${server.id}:${targetUserId}`;
     let snapshot: WatchStatisticsSnapshot;
     try {
       snapshot = await task;
-      watchImportPath = undefined;
-      watchImportFileDigest = undefined;
-      watchImportTargetDigest = undefined;
-      watchImportScope = undefined;
     } finally {
       if (watchRefresh === task) {
         watchRefresh = undefined;
         watchRefreshMode = undefined;
+        watchRefreshScope = undefined;
       }
     }
     await publishWatch(snapshot, targetUserId);

@@ -1,5 +1,14 @@
 import { jellyfinAuthorization } from "./jellyfin-authorization";
-import { readFile, writeFile, mkdir, copyFile, unlink, rename, readdir } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  copyFile,
+  unlink,
+  rename,
+  readdir,
+  access,
+} from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { join, dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -154,6 +163,7 @@ const settingsSchema = z.object({
 const snapshotSchema = z.object({
   serverId: z.string(),
   refreshedAt: z.string(),
+  catalogRefreshedAt: optionalText,
   media: z.array(mediaSchema),
   records: z.array(recordSchema),
   backfill: z.array(backfillSchema),
@@ -165,6 +175,9 @@ const snapshotSchema = z.object({
   appliedReviewIds: z.array(z.string()).optional(),
   revokedConfirmationIds: z.array(z.string()).optional(),
   identityLinks: z.record(z.string(), z.string()).optional(),
+  identityConflicts: z
+    .array(z.object({ fromItemId: z.string(), toItemId: z.string(), reason: z.string() }))
+    .optional(),
   corrections: z
     .object({ records: z.record(z.string(), z.string()), items: z.record(z.string(), z.string()) })
     .optional(),
@@ -412,10 +425,12 @@ export class WatchStatisticsStore {
     if (!snapshot) return;
     const backup = `${path}.${new Date().toISOString().slice(0, 10)}.auto.backup`;
     try {
-      await writeFile(backup, JSON.stringify(snapshot), { flag: "wx" });
+      await access(backup);
+      return;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    await this.atomicWrite(backup, JSON.stringify(snapshot));
     const files = (await readdir(dirname(path)))
       .filter(
         (name) =>
@@ -441,7 +456,9 @@ export class WatchStatisticsStore {
     );
   }
   private async readImport(path: string) {
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    const bytes = await readFile(path);
+    const fileDigest = createHash("sha256").update(bytes).digest("hex");
+    const parsed: unknown = JSON.parse(bytes.toString("utf8"));
     if (!parsed || typeof parsed !== "object") throw new Error("导入文件格式无效");
     const input = parsed as {
       version?: unknown;
@@ -470,12 +487,32 @@ export class WatchStatisticsStore {
     if (!result.success)
       throw new Error(`统计文件内容无效：${result.error.issues[0]?.path.join(".") ?? "未知字段"}`);
     const snapshot = result.data as WatchStatisticsSnapshot;
+    if (snapshot.candidates) {
+      const candidates = new Map<
+        string,
+        NonNullable<WatchStatisticsSnapshot["candidates"]>[number]
+      >();
+      for (const entry of snapshot.candidates) {
+        const key = `${entry.itemId}:${entry.status === "ignored" ? "ignored" : "active"}`;
+        const existing = candidates.get(key);
+        if (existing && entry.status === "ignored")
+          existing.evidenceIds = [...new Set([...existing.evidenceIds, ...entry.evidenceIds])];
+        else if (existing) throw new Error("统计文件candidate含重复身份");
+        else candidates.set(key, { ...entry, evidenceIds: [...entry.evidenceIds] });
+      }
+      snapshot.candidates = [...candidates.values()];
+    }
     for (const [kind, ids] of [
       ["media", snapshot.media.map((entry) => entry.id)],
       ["record", snapshot.records.map((entry) => entry.id)],
       ["backfill", snapshot.backfill.map((entry) => entry.itemId)],
       ["confirmation", (snapshot.confirmations ?? []).map((entry) => entry.id)],
-      ["candidate", (snapshot.candidates ?? []).map((entry) => entry.itemId)],
+      [
+        "candidate",
+        (snapshot.candidates ?? []).map(
+          (entry) => `${entry.itemId}:${entry.status === "ignored" ? "ignored" : "active"}`,
+        ),
+      ],
     ] as const)
       if (new Set(ids).size !== ids.length) throw new Error(`统计文件${kind}含重复身份`);
     const corrections = z
@@ -489,6 +526,7 @@ export class WatchStatisticsStore {
       throw new Error("统计文件修正数据无效");
     return {
       snapshot,
+      fileDigest,
       version: Number(archive.version),
       exportedAt: typeof archive.exportedAt === "string" ? archive.exportedAt : undefined,
     };
@@ -561,12 +599,24 @@ export class WatchStatisticsStore {
       }
     };
     keyed("backfill", current.backfill, incoming.backfill, (value) => value.itemId);
-    keyed(
-      "candidate",
-      current.candidates ?? [],
-      incoming.candidates ?? [],
-      (value) => value.itemId,
+    const candidates = new Map(
+      (current.candidates ?? []).map((value) => [
+        `${value.itemId}:${value.status === "ignored" ? "ignored" : "active"}`,
+        value,
+      ]),
     );
+    for (const value of incoming.candidates ?? []) {
+      const key = `${value.itemId}:${value.status === "ignored" ? "ignored" : "active"}`;
+      if (candidates.get(key)?.status !== undefined && candidates.get(key)?.status !== value.status)
+        conflicts.push(`candidate:${key}`);
+      for (const other of current.candidates ?? [])
+        if (
+          other.itemId === value.itemId &&
+          (other.status === "ignored") !== (value.status === "ignored") &&
+          value.evidenceIds.some((id) => other.evidenceIds.includes(id))
+        )
+          conflicts.push(`candidate-evidence:${value.itemId}`);
+    }
     if (JSON.stringify(current.settings) !== JSON.stringify(incoming.settings))
       conflicts.push("settings");
     for (const [key, value] of Object.entries(incoming.identityLinks ?? {}))
@@ -601,7 +651,8 @@ export class WatchStatisticsStore {
     mode: "replace" | "merge",
   ): WatchStatisticsSnapshot {
     const crossServer = snapshot.serverId !== serverId;
-    const mapId = (id: string) => (crossServer ? `legacy:${snapshot.serverId}:${id}` : id);
+    const mapId = (id: string) =>
+      crossServer && !id.startsWith("legacy:") ? `legacy:${snapshot.serverId}:${id}` : id;
     const normalized: WatchStatisticsSnapshot = {
       ...snapshot,
       serverId,
@@ -634,11 +685,16 @@ export class WatchStatisticsStore {
         Object.fromEntries(
           Object.entries(snapshot.identityLinks).map(([from, to]) => [mapId(from), mapId(to)]),
         ),
+      identityConflicts: snapshot.identityConflicts?.map((entry) => ({
+        ...entry,
+        fromItemId: mapId(entry.fromItemId),
+        toItemId: mapId(entry.toItemId),
+      })),
       refreshedAt: new Date().toISOString(),
     };
     if (mode === "merge" && current && crossServer) {
       const links = new Map<string, string>();
-      for (const old of normalized.media) {
+      for (const old of normalized.media.filter((item) => item.type !== "Episode")) {
         const keys = providerKeys(old);
         if (!keys.length) continue;
         const matches = current.media.filter(
@@ -650,6 +706,11 @@ export class WatchStatisticsStore {
         );
         if (matches.length === 1) links.set(old.id, matches[0].id);
       }
+      const parentTargets = new Map<string, number>();
+      for (const target of links.values())
+        parentTargets.set(target, (parentTargets.get(target) ?? 0) + 1);
+      for (const [source, target] of links)
+        if ((parentTargets.get(target) ?? 0) > 1) links.delete(source);
       for (const old of normalized.media) {
         if (
           old.type !== "Episode" ||
@@ -672,11 +733,10 @@ export class WatchStatisticsStore {
         );
         if (matches.length === 1) links.set(old.id, matches[0].id);
       }
-      const targets = [...links.values()];
-      for (const target of targets)
-        if (targets.filter((id) => id === target).length > 1)
-          for (const [source, destination] of links)
-            if (destination === target) links.delete(source);
+      const targets = new Map<string, number>();
+      for (const target of links.values()) targets.set(target, (targets.get(target) ?? 0) + 1);
+      for (const [source, target] of links)
+        if ((targets.get(target) ?? 0) > 1) links.delete(source);
       const linked = (id: string) => links.get(id) ?? id;
       normalized.records = normalized.records.map((record) => ({
         ...record,
@@ -712,8 +772,8 @@ export class WatchStatisticsStore {
     userId: string,
     path: string,
     mode: "replace" | "merge" = "replace",
+    expected?: { fileDigest: string; targetDigest: string },
   ): Promise<WatchStatisticsSnapshot> {
-    const { snapshot } = await this.readImport(path);
     const destination = this.path(serverId, userId);
     await mkdir(dirname(destination), { recursive: true });
     const previous = this.writes.get(destination) ?? Promise.resolve();
@@ -721,6 +781,15 @@ export class WatchStatisticsStore {
       .catch(() => {})
       .then(async () => {
         const current = await this.getView(serverId, userId);
+        if (
+          expected &&
+          createHash("sha256").update(JSON.stringify(current)).digest("hex") !==
+            expected.targetDigest
+        )
+          throw new Error("当前观影档案在预览后发生变化，请重新预览");
+        const { snapshot, fileDigest } = await this.readImport(path);
+        if (expected && fileDigest !== expected.fileDigest)
+          throw new Error("导入文件在预览后发生变化，请重新选择并预览");
         const normalized = this.normalizeImport(snapshot, serverId, userId, current, mode);
         if (mode === "merge" && current) {
           const conflicts = this.mergeConflicts(current, normalized);
@@ -732,7 +801,7 @@ export class WatchStatisticsStore {
         const oldBytes = current ? await readFile(destination) : null;
         if (current) {
           const backup = `${destination}.${new Date().toISOString().replace(/[:.]/g, "-")}.${randomUUID()}.backup`;
-          await writeFile(backup, JSON.stringify(current));
+          await this.atomicWrite(backup, JSON.stringify(current));
         }
         try {
           await this.atomicWrite(destination, JSON.stringify(imported));
@@ -791,8 +860,20 @@ export class WatchStatisticsStore {
       candidates: union(
         incoming.candidates ?? [],
         current.candidates ?? [],
-        (value) => value.itemId,
-      ),
+        (value) => `${value.itemId}:${value.status === "ignored" ? "ignored" : "active"}`,
+      ).map((value) => ({
+        ...value,
+        evidenceIds: [
+          ...new Set([
+            ...((incoming.candidates ?? []).find(
+              (candidate) => candidate.itemId === value.itemId && candidate.status === value.status,
+            )?.evidenceIds ?? []),
+            ...((current.candidates ?? []).find(
+              (candidate) => candidate.itemId === value.itemId && candidate.status === value.status,
+            )?.evidenceIds ?? []),
+          ]),
+        ],
+      })),
       revokedConfirmationIds,
       appliedReviewIds: [
         ...new Set([...(current.appliedReviewIds ?? []), ...(incoming.appliedReviewIds ?? [])]),
@@ -802,6 +883,13 @@ export class WatchStatisticsStore {
         items: { ...incoming.corrections?.items, ...current.corrections?.items },
       },
       identityLinks: { ...incoming.identityLinks, ...current.identityLinks },
+      identityConflicts: [
+        ...new Map(
+          [...(current.identityConflicts ?? []), ...(incoming.identityConflicts ?? [])].map(
+            (entry) => [`${entry.fromItemId}:${entry.toItemId}:${entry.reason}`, entry],
+          ),
+        ).values(),
+      ],
     };
   }
   async linkWatchMedia(serverId: string, userId: string, fromItemId: string, toItemId: string) {
@@ -847,6 +935,9 @@ export class WatchStatisticsStore {
         snapshot.identityLinks = { ...snapshot.identityLinks, [fromItemId]: toItemId };
         for (const [alias, target] of Object.entries(snapshot.identityLinks))
           if (target === fromItemId) snapshot.identityLinks[alias] = toItemId;
+        snapshot.identityConflicts = snapshot.identityConflicts?.filter(
+          (entry) => entry.fromItemId !== fromItemId && entry.toItemId !== fromItemId,
+        );
         snapshot.records = snapshot.records.map((record) =>
           record.itemId === fromItemId ? { ...record, itemId: toItemId } : record,
         );
@@ -879,9 +970,9 @@ export class WatchStatisticsStore {
     fromUserId: string,
     toUserId: string,
   ): Promise<WatchStatisticsSnapshot | null> {
-    if (itemId(fromUserId) === itemId(toUserId)) return this.get(serverId, toUserId);
+    if (itemId(fromUserId) === itemId(toUserId)) return null;
     const source = await this.get(serverId, fromUserId);
-    if (!source) return this.get(serverId, toUserId);
+    if (!source) return null;
     const archive = `${this.path(serverId, fromUserId)}.${randomUUID()}.bind.tmp`;
     try {
       await this.exportData(serverId, fromUserId, archive);
@@ -900,6 +991,7 @@ export class WatchStatisticsStore {
     value: WatchStatisticsSnapshot,
     settingsOnly = false,
     baseline?: WatchStatisticsSnapshot | null,
+    allowNoop = false,
   ): Promise<WatchStatisticsSnapshot> {
     const path = this.path(serverId, userId);
     await mkdir(dirname(path), { recursive: true });
@@ -919,53 +1011,28 @@ export class WatchStatisticsStore {
           throw new Error("观影档案已更新，请重新同步");
         const snapshot = settingsOnly && latest ? latest : value;
         if (
-          !settingsOnly &&
+          allowNoop &&
           latest &&
-          baseline &&
-          JSON.stringify({
-            confirmations: latest.confirmations,
-            candidates: latest.candidates,
-            backfill: latest.backfill,
-          }) !==
-            JSON.stringify({
-              confirmations: baseline.confirmations,
-              candidates: baseline.candidates,
-              backfill: baseline.backfill,
-            })
+          latest.cursor &&
+          Date.now() - Date.parse(latest.cursor) < 60 * 60 * 1000
         ) {
-          const migrated = (snapshot.confirmations ?? []).filter(
-            (entry) =>
-              entry.source === "initial" &&
-              !(baseline.confirmations ?? []).some((old) => old.id === entry.id) &&
-              ((latest.candidates ?? []).some(
-                (candidate) =>
-                  candidate.itemId === entry.itemId &&
-                  candidate.status === "pending" &&
-                  candidate.evidenceIds.length === 0,
-              ) ||
-                !(baseline.media ?? []).some((item) => item.id === entry.itemId)) &&
-              !(latest.confirmations ?? []).some((old) => old.itemId === entry.itemId),
-          );
-          snapshot.confirmations = [...(latest.confirmations ?? []), ...migrated];
-          snapshot.candidates = [
-            ...new Map(
-              [...(snapshot.candidates ?? []), ...(latest.candidates ?? [])].map((entry) => [
-                entry.itemId,
-                entry,
-              ]),
-            ).values(),
-          ];
-          snapshot.candidates = snapshot.candidates.filter(
-            (entry) => !migrated.some((confirmation) => confirmation.itemId === entry.itemId),
-          );
-          snapshot.backfill = [
-            ...new Map(
-              [...(snapshot.backfill ?? []), ...(latest.backfill ?? [])].map((entry) => [
-                entry.itemId,
-                entry,
-              ]),
-            ).values(),
-          ];
+          const stable = (item: WatchStatisticsSnapshot) => {
+            const {
+              refreshedAt: _refreshedAt,
+              cursor: _cursor,
+              catalogRefreshedAt: _catalogRefreshedAt,
+              ...data
+            } = item;
+            return JSON.stringify(
+              Object.fromEntries(
+                Object.entries({
+                  ...data,
+                  corrections: data.corrections ?? { records: {}, items: {} },
+                }).sort(([left], [right]) => left.localeCompare(right)),
+              ),
+            );
+          };
+          if (stable(latest) === stable(snapshot)) return latest;
         }
         if (
           !settingsOnly &&
@@ -988,28 +1055,11 @@ export class WatchStatisticsStore {
           }
         }
         snapshot.settings = this.currentSettings.get(path) ?? snapshot.settings;
-        if (!settingsOnly && latest && baseline)
-          snapshot.appliedReviewIds = [
-            ...new Set([...(snapshot.appliedReviewIds ?? []), ...(latest.appliedReviewIds ?? [])]),
-          ];
-        if (!settingsOnly && latest && baseline) {
-          snapshot.revokedConfirmationIds = [
-            ...new Set([
-              ...(snapshot.revokedConfirmationIds ?? []),
-              ...(latest.revokedConfirmationIds ?? []),
-            ]),
-          ];
-          if (JSON.stringify(latest.corrections) !== JSON.stringify(baseline.corrections))
-            snapshot.corrections = {
-              records: { ...snapshot.corrections?.records, ...latest.corrections?.records },
-              items: { ...snapshot.corrections?.items, ...latest.corrections?.items },
-            };
-        }
-        await this.dailyBackup(path, await this.getView(serverId, userId));
-        const temporary = `${path}.${randomUUID()}.tmp`;
-        await writeFile(temporary, JSON.stringify(snapshot));
-        const { rename } = await import("node:fs/promises");
-        await rename(temporary, path);
+        await this.dailyBackup(
+          path,
+          latest?.corrections ? latest : await this.getView(serverId, userId),
+        );
+        await this.atomicWrite(path, JSON.stringify(snapshot));
         return snapshot;
       });
     this.writes.set(path, next);
@@ -1046,6 +1096,21 @@ export class WatchStatisticsStore {
           const planned = planBatch(snapshot, input);
           if (planned.preview.token !== input.token) throw new Error("预览已过期，请重新预览");
           confirmations = planned.confirmations;
+          for (const item of planned.preview.items) {
+            if (item.afterCount !== 0) continue;
+            const active = candidates.find(
+              (entry) => entry.itemId === item.itemId && entry.status !== "ignored",
+            );
+            const ignored = candidates.find(
+              (entry) => entry.itemId === item.itemId && entry.status === "ignored",
+            );
+            if (active && ignored) {
+              ignored.evidenceIds = [...new Set([...ignored.evidenceIds, ...active.evidenceIds])];
+              candidates.splice(candidates.indexOf(active), 1);
+            } else if (active) active.status = "ignored";
+            else if (!ignored)
+              candidates.push({ itemId: item.itemId, evidenceIds: [], status: "ignored" });
+          }
           snapshot.appliedReviewIds = [...(snapshot.appliedReviewIds ?? []), input.operationId];
         } else if (input.action === "revoke") {
           const index = confirmations.findIndex((item) => item.id === input.confirmationId);
@@ -1099,7 +1164,17 @@ export class WatchStatisticsStore {
               });
               if (candidate) candidates.splice(candidates.indexOf(candidate), 1);
             } else if (candidate) {
-              candidate.status = input.action === "ignore" ? "ignored" : "later";
+              if (input.action === "ignore") {
+                const ignored = candidates.find(
+                  (entry) => entry.itemId === id && entry.status === "ignored",
+                );
+                if (ignored) {
+                  ignored.evidenceIds = [
+                    ...new Set([...ignored.evidenceIds, ...candidate.evidenceIds]),
+                  ];
+                  candidates.splice(candidates.indexOf(candidate), 1);
+                } else candidate.status = "ignored";
+              } else candidate.status = "later";
             }
           }
         }
@@ -1175,18 +1250,40 @@ export class WatchStatisticsStore {
       }
     }
     const previous = await this.get(serverId, auth.userId);
-    const fullScan = mode === "full" || !previous || !previous.cursor;
+    const cursorTime = previous?.cursor ? Date.parse(previous.cursor) : NaN;
+    const fullScan =
+      mode === "full" || !previous || !Number.isFinite(cursorTime) || cursorTime > Date.now();
     const views = await request<{ Items: RawItem[] }>(
       `Users/${encodeURIComponent(auth.userId)}/Views`,
     );
     if (!Array.isArray(views?.Items) || (previous?.libraries?.length && !views.Items.length))
       throw new Error("Jellyfin 媒体库目录为空或不完整，同步未保存");
+    if (
+      views.Items.some(
+        (item) =>
+          typeof item?.Id !== "string" ||
+          !item.Id ||
+          (item.Name !== undefined && typeof item.Name !== "string"),
+      )
+    )
+      throw new Error("Jellyfin 媒体库目录字段无效，同步未保存");
     const libraries = new Map(
       (views.Items ?? []).map((item) => [itemId(item.Id), item.Name ?? "未匹配"]),
     );
+    const priorLibraries = new Set((previous?.libraries ?? []).map((item) => item.id));
+    const librariesChanged =
+      priorLibraries.size !== libraries.size ||
+      [...libraries.keys()].some((id) => !priorLibraries.has(id));
+    const lastCatalogAt = previous?.catalogRefreshedAt ?? previous?.refreshedAt;
+    const catalogScan =
+      fullScan ||
+      librariesChanged ||
+      !lastCatalogAt ||
+      !Number.isFinite(Date.parse(lastCatalogAt)) ||
+      Date.now() - Date.parse(lastCatalogAt) >= 24 * 60 * 60 * 1000;
     const raw: RawItem[] = [];
     const itemLibraries = new Map<string, string>();
-    if (fullScan)
+    if (catalogScan)
       for (const libraryId of libraries.keys())
         for (let offset = 0; ;) {
           const params = new URLSearchParams({
@@ -1260,7 +1357,7 @@ export class WatchStatisticsStore {
       };
     };
     const media: WatchMedia[] = raw.map(convertMedia);
-    if (fullScan && previous?.media.length && !media.length)
+    if (catalogScan && previous?.media.length && !media.length)
       throw new Error("Jellyfin 媒体扫描为空，同步未保存");
     let activities: PlaybackActivity[];
     try {
@@ -1335,6 +1432,8 @@ export class WatchStatisticsStore {
           !Number.isFinite(Number(row.PlayDuration))
         )
           throw new Error("播放记录缺少必需字段");
+        if (itemId(row.UserId) !== reportUserId)
+          throw new Error("播放记录用户与当前 Jellyfin 用户不符");
         const startAt = reportDate(row.DateCreated);
         const sourceKey = `${itemId(row.ItemId)}:${rawDate(row.DateCreated)}:${row.ClientName ?? ""}:${row.DeviceName ?? ""}`;
         return {
@@ -1355,7 +1454,7 @@ export class WatchStatisticsStore {
       .filter((row) => row.durationSec >= 0);
     const mediaById = new Map((previous?.media ?? []).map((m) => [m.id, m]));
     for (const item of media) mediaById.set(item.id, item);
-    if (!fullScan) {
+    if (!catalogScan) {
       const priorRecords = new Map((previous?.records ?? []).map((r) => [r.id, r]));
       const changed = current.filter((r) => priorRecords.get(r.id)?.durationSec !== r.durationSec);
       const ids = new Set(changed.map((r) => r.itemId));
@@ -1386,6 +1485,11 @@ export class WatchStatisticsStore {
       const changedItems = await fetchItems([...ids]);
       for (const item of changedItems) {
         const converted = convertMedia(item);
+        const prior = mediaById.get(converted.id);
+        if (!converted.libraryId && prior?.libraryId) {
+          converted.libraryId = prior.libraryId;
+          converted.libraryName = prior.libraryName;
+        }
         const priorSeries = converted.seriesId ? mediaById.get(converted.seriesId) : undefined;
         if (!converted.libraryId && priorSeries?.libraryId) {
           converted.libraryId = priorSeries.libraryId;
@@ -1423,12 +1527,19 @@ export class WatchStatisticsStore {
           Fields: "Genres,People,ParentId,ProviderIds",
           Limit: "500",
         });
-        for (let offset = 0; ; offset += 500) {
+        for (let offset = 0; ;) {
           params.set("StartIndex", String(offset));
           const page = await request<{ Items: RawItem[]; TotalRecordCount?: number }>(
             `Users/${encodeURIComponent(auth.userId)}/Items?${params}`,
           );
-          if (!Array.isArray(page?.Items)) throw new Error("Jellyfin 媒体响应缺少 Items");
+          if (
+            !Array.isArray(page?.Items) ||
+            (page.TotalRecordCount != null &&
+              (!Number.isSafeInteger(page.TotalRecordCount) ||
+                page.TotalRecordCount < 0 ||
+                (page.Items.length === 0 && offset < page.TotalRecordCount)))
+          )
+            throw new Error("Jellyfin 剧集分页响应不完整，同步未保存");
           for (const item of page.Items) {
             const converted = convertMedia(item);
             const series = mediaById.get(seriesId);
@@ -1438,9 +1549,10 @@ export class WatchStatisticsStore {
             }
             mediaById.set(itemId(item.Id), converted);
           }
+          offset += page.Items.length;
           if (
-            page.Items.length < 500 ||
-            offset + page.Items.length >= (page.TotalRecordCount ?? Infinity)
+            page.Items.length === 0 ||
+            offset >= (page.TotalRecordCount ?? (page.Items.length < 500 ? offset : Infinity))
           )
             break;
         }
@@ -1449,16 +1561,88 @@ export class WatchStatisticsStore {
     // A migration may change every Jellyfin ItemId. Match only unambiguous
     // provider identities, then use the matched series plus season/episode.
     const oldMedia = previous?.media ?? [];
-    const newMedia = fullScan
+    const oldMediaIds = new Set(oldMedia.map((item) => item.id));
+    const newMedia = catalogScan
       ? media
-      : [...mediaById.values()].filter((m) => !oldMedia.some((old) => old.id === m.id));
+      : [...mediaById.values()].filter((m) => !oldMediaIds.has(m.id));
+    const newMediaIds = new Set(newMedia.map((item) => item.id));
     const newByProvider = new Map<string, WatchMedia[]>();
+    const newById = new Map(newMedia.map((item) => [item.id, item]));
+    const episodeKey = (
+      seriesId: string | undefined,
+      season: number | undefined,
+      episode: number | undefined,
+    ) => `${seriesId ?? ""}:${season ?? ""}:${episode ?? ""}`;
+    const newEpisodes = new Map<string, WatchMedia[]>();
     for (const m of newMedia)
       for (const key of providerKeys(m))
         newByProvider.set(key, [...(newByProvider.get(key) ?? []), m]);
+    for (const m of newMedia.filter((item) => item.type === "Episode")) {
+      const key = episodeKey(m.seriesId, m.seasonNumber, m.episodeNumber);
+      newEpisodes.set(key, [...(newEpisodes.get(key) ?? []), m]);
+    }
     const remap = new Map<string, string>();
+    const priorCorrections = (await this.getView(serverId, auth.userId))?.corrections;
+    const identityConflicts: NonNullable<WatchStatisticsSnapshot["identityConflicts"]> = [
+      ...(previous?.identityConflicts ?? []),
+    ];
+    const conflict = (fromItemId: string, toItemId: string, reason: string) =>
+      identityConflicts.push({ fromItemId, toItemId, reason });
+    const historicalIds = new Set([
+      ...(previous?.records ?? []).map((entry) => entry.itemId),
+      ...(previous?.backfill ?? []).map((entry) => entry.itemId),
+      ...(previous?.confirmations ?? []).map((entry) => entry.itemId),
+    ]);
+    const pruneRemap = () => {
+      const sourcesByTarget = new Map<string, string[]>();
+      for (const [from, to] of remap)
+        sourcesByTarget.set(to, [...(sourcesByTarget.get(to) ?? []), from]);
+      for (const [to, sources] of sourcesByTarget)
+        if (sources.length > 1)
+          for (const from of sources) {
+            conflict(from, to, "多个旧作品匹配同一目标");
+            remap.delete(from);
+          }
+      for (const [from, to] of remap) {
+        const entries = previous;
+        const has = (ids: string[]) => ids.includes(from) && ids.includes(to);
+        const reason = has((entries?.backfill ?? []).map((entry) => entry.itemId))
+          ? "双方已有独立历史估算"
+          : has(
+                (entries?.confirmations ?? [])
+                  .filter((entry) => entry.source === "initial")
+                  .map((entry) => entry.itemId),
+              )
+            ? "双方已有独立首次观看确认"
+            : has((entries?.candidates ?? []).map((entry) => entry.itemId))
+              ? "双方已有独立待处理证据"
+              : priorCorrections?.items[from] &&
+                  priorCorrections.items[to] &&
+                  priorCorrections.items[from] !== priorCorrections.items[to]
+                ? "双方媒体库修正矛盾"
+                : undefined;
+        if (reason) {
+          conflict(from, to, reason);
+          remap.delete(from);
+        }
+      }
+    };
+    for (const old of oldMedia) {
+      const updated = newById.get(old.id);
+      if (
+        updated &&
+        old.type === updated.type &&
+        !providerCompatible(old, updated) &&
+        historicalIds.has(old.id)
+      )
+        conflict(
+          old.id,
+          old.id,
+          `同一 ItemId 的外部身份改变，需核对旧 ${old.type} ${providerKeys(old).join(",")}；新 ${updated.type} ${providerKeys(updated).join(",")}`,
+        );
+    }
     for (const old of oldMedia.filter(
-      (m) => m.type !== "Episode" && fullScan && eligibleArchiveMedia(m, serverId),
+      (m) => m.type !== "Episode" && catalogScan && eligibleArchiveMedia(m, serverId),
     )) {
       const matches = new Set(
         providerKeys(old)
@@ -1466,27 +1650,49 @@ export class WatchStatisticsStore {
           .filter((candidate) => providerCompatible(old, candidate))
           .map((m) => m.id),
       );
-      if (matches.size === 1 && !newMedia.some((m) => m.id === old.id && m.type === old.type))
-        remap.set(old.id, [...matches][0]);
+      if (matches.size > 1 && !matches.has(old.id))
+        for (const to of matches) conflict(old.id, to, "旧作品匹配多个候选");
+      const related = new Set(providerKeys(old).flatMap((key) => newByProvider.get(key) ?? []));
+      for (const candidate of related)
+        if (
+          candidate.type === old.type &&
+          candidate.id !== old.id &&
+          providerKeys(old).some((key) => providerKeys(candidate).includes(key)) &&
+          !providerCompatible(old, candidate)
+        )
+          conflict(old.id, candidate.id, "外部身份部分相同但存在矛盾");
+      if (matches.size === 1 && !newMediaIds.has(old.id)) remap.set(old.id, [...matches][0]);
     }
+    pruneRemap();
     for (const old of oldMedia.filter(
-      (m) => m.type === "Episode" && fullScan && eligibleArchiveMedia(m, serverId),
+      (m) => m.type === "Episode" && catalogScan && eligibleArchiveMedia(m, serverId),
     )) {
       const seriesId =
         old.seriesId &&
-        (remap.get(old.seriesId) ??
-          (newMedia.some((m) => m.id === old.seriesId) ? old.seriesId : undefined));
+        (remap.get(old.seriesId) ?? (newMediaIds.has(old.seriesId) ? old.seriesId : undefined));
       if (!seriesId || old.seasonNumber == null || old.episodeNumber == null) continue;
-      const matches = newMedia.filter(
+      const episodeCandidates =
+        newEpisodes.get(episodeKey(seriesId, old.seasonNumber, old.episodeNumber)) ?? [];
+      const matches = episodeCandidates.filter(
         (m) =>
           m.type === "Episode" &&
           m.seriesId === seriesId &&
           m.seasonNumber === old.seasonNumber &&
-          m.episodeNumber === old.episodeNumber,
+          m.episodeNumber === old.episodeNumber &&
+          providerCompatible(old, m),
       );
+      for (const candidate of episodeCandidates)
+        if (
+          candidate.type === "Episode" &&
+          candidate.seriesId === seriesId &&
+          candidate.seasonNumber === old.seasonNumber &&
+          candidate.episodeNumber === old.episodeNumber &&
+          !providerCompatible(old, candidate)
+        )
+          conflict(old.id, candidate.id, "季集号相同但外部身份矛盾");
       if (matches.length === 1 && matches[0].id !== old.id) remap.set(old.id, matches[0].id);
     }
-    if (!fullScan) {
+    if (!catalogScan) {
       for (const item of newMedia.filter((m) => m.type !== "Episode")) {
         const matches = new Set(
           providerKeys(item)
@@ -1511,16 +1717,15 @@ export class WatchStatisticsStore {
             old.type === "Episode" &&
             old.seriesId === seriesId &&
             old.seasonNumber === item.seasonNumber &&
-            old.episodeNumber === item.episodeNumber,
+            old.episodeNumber === item.episodeNumber &&
+            providerCompatible(old, item),
         );
         if (matches.length === 1) remap.set(item.id, matches[0].id);
       }
     }
     // When the old library entry still exists, use it as the stable logical
     // item for exactly one duplicate with the same provider identity.
-    for (const old of oldMedia.filter(
-      (m) => m.type !== "Episode" && newMedia.some((n) => n.id === m.id),
-    )) {
+    for (const old of oldMedia.filter((m) => m.type !== "Episode" && newMediaIds.has(m.id))) {
       const matches = new Set(
         providerKeys(old)
           .flatMap((key) => newByProvider.get(key) ?? [])
@@ -1531,9 +1736,7 @@ export class WatchStatisticsStore {
       const duplicateId = [...matches].find((id) => id !== old.id)!;
       if (!oldMedia.some((m) => m.id === duplicateId)) remap.set(duplicateId, old.id);
     }
-    for (const old of oldMedia.filter(
-      (m) => m.type === "Episode" && newMedia.some((n) => n.id === m.id),
-    )) {
+    for (const old of oldMedia.filter((m) => m.type === "Episode" && newMediaIds.has(m.id))) {
       const duplicateSeries = [...remap].find(([, target]) => target === old.seriesId)?.[0];
       if (!duplicateSeries || old.seasonNumber == null || old.episodeNumber == null) continue;
       const matches = newMedia.filter(
@@ -1541,33 +1744,68 @@ export class WatchStatisticsStore {
           m.type === "Episode" &&
           m.seriesId === duplicateSeries &&
           m.seasonNumber === old.seasonNumber &&
-          m.episodeNumber === old.episodeNumber,
+          m.episodeNumber === old.episodeNumber &&
+          providerCompatible(old, m),
       );
       if (matches.length === 1 && !oldMedia.some((m) => m.id === matches[0].id))
         remap.set(matches[0].id, old.id);
     }
-    const sourcesByTarget = new Map<string, string[]>();
-    for (const [from, to] of remap)
-      sourcesByTarget.set(to, [...(sourcesByTarget.get(to) ?? []), from]);
-    for (const sources of sourcesByTarget.values())
-      if (sources.length > 1) for (const source of sources) remap.delete(source);
-    for (const [from, to] of remap) {
-      const bothHaveBaseline =
-        (previous?.backfill ?? []).some((entry) => entry.itemId === from) &&
-        (previous?.backfill ?? []).some((entry) => entry.itemId === to);
-      const bothHaveInitial =
-        (previous?.confirmations ?? []).some(
-          (entry) => entry.itemId === from && entry.source === "initial",
-        ) &&
-        (previous?.confirmations ?? []).some(
-          (entry) => entry.itemId === to && entry.source === "initial",
-        );
-      if (bothHaveBaseline || bothHaveInitial) remap.delete(from);
+    pruneRemap();
+    // A name can suggest a manual review, but never establishes identity.
+    const nameKey = (name: string) =>
+      name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    const newByName = new Map<string, WatchMedia[]>();
+    for (const item of newMedia) {
+      const name = nameKey(item.name);
+      if (!name) continue;
+      const key = `${item.type}:${name}`;
+      const group = newByName.get(key) ?? [];
+      group.push(item);
+      newByName.set(key, group);
+    }
+    const oldSeriesNames = new Map(
+      oldMedia
+        .filter((item) => item.type === "Series")
+        .map((item) => [item.id, nameKey(item.name)]),
+    );
+    const newSeriesNames = new Map(
+      newMedia
+        .filter((item) => item.type === "Series")
+        .map((item) => [item.id, nameKey(item.name)]),
+    );
+    for (const old of oldMedia) {
+      if (!historicalIds.has(old.id) || newMediaIds.has(old.id) || !nameKey(old.name)) continue;
+      for (const item of newByName.get(`${old.type}:${nameKey(old.name)}`) ?? []) {
+        if (remap.has(old.id) || item.id === old.id) continue;
+        const priorKeys = providerKeys(old),
+          currentKeys = providerKeys(item);
+        if (priorKeys.length && currentKeys.length) continue;
+        if (old.type === "Episode") {
+          const oldSeries = nameKey(old.seriesName || "") || oldSeriesNames.get(old.seriesId || "");
+          const newSeries =
+            nameKey(item.seriesName || "") || newSeriesNames.get(item.seriesId || "");
+          if (oldSeries && newSeries && oldSeries !== newSeries) continue;
+          if (
+            old.seasonNumber != null &&
+            item.seasonNumber != null &&
+            old.seasonNumber !== item.seasonNumber
+          )
+            continue;
+          if (
+            old.episodeNumber != null &&
+            item.episodeNumber != null &&
+            old.episodeNumber !== item.episodeNumber
+          )
+            continue;
+        }
+        conflict(old.id, item.id, "同名作品缺少可靠身份，请人工核对");
+      }
     }
     // Keep prior source ItemIds as aliases across repeated library rebuilds.
     // The archive itself is scoped by server and user; never infer aliases from titles.
     const identityLinks = { ...(previous?.identityLinks ?? {}) };
     for (const [from, to] of remap) {
+      if (identityLinks[to]) delete identityLinks[to];
       for (const [alias, target] of Object.entries(identityLinks))
         if (target === from) identityLinks[alias] = to;
       identityLinks[from] = to;
@@ -1580,7 +1818,6 @@ export class WatchStatisticsStore {
       }
       return id;
     };
-    const priorCorrections = (await this.getView(serverId, auth.userId))?.corrections;
     const corrections = priorCorrections && {
       records: { ...priorCorrections.records },
       items: { ...priorCorrections.items },
@@ -1591,13 +1828,13 @@ export class WatchStatisticsStore {
           corrections.items[to] = corrections.items[from];
         delete corrections.items[from];
       }
-    for (const old of fullScan ? oldMedia : []) {
-      if (newMedia.some((m) => m.id === old.id)) continue;
+    for (const old of catalogScan ? oldMedia : []) {
+      if (newMediaIds.has(old.id)) continue;
       if (remap.has(old.id)) mediaById.delete(old.id);
       else mediaById.set(old.id, old);
     }
     for (const [from, to] of remap)
-      if (oldMedia.some((m) => m.id === to) && newMedia.some((m) => m.id === from)) {
+      if (oldMediaIds.has(to) && newMediaIds.has(from)) {
         const retained = mediaById.get(to);
         const duplicate = mediaById.get(from);
         if (retained && duplicate) {
@@ -1623,13 +1860,34 @@ export class WatchStatisticsStore {
       ...r,
       itemId: resolveItemId(r.itemId),
     }));
+    const priorMediaById = new Map((previous?.media ?? []).map((item) => [item.id, item]));
     const priorSource = new Map(
       (previous?.records ?? []).map((record) => [
         record.id,
-        previous?.media.find((item) => item.id === record.itemId)?.sourceId ?? serverId,
+        priorMediaById.get(record.itemId)?.sourceId ?? serverId,
       ]),
     );
     const merged = new Map(prior.map((record) => [record.id, record]));
+    const eventBuckets = new Map<string, WatchRecord[]>();
+    const eventKey = (client: string | undefined, device: string | undefined, date: string) =>
+      `${client ?? ""}\u0000${device ?? ""}\u0000${date}`;
+    for (const record of prior)
+      for (const date of new Set(
+        [record.rawDate, record.startAt].filter((value): value is string => !!value),
+      )) {
+        const key = eventKey(record.clientName, record.deviceName, date);
+        eventBuckets.set(key, [...(eventBuckets.get(key) ?? []), record]);
+      }
+    const incomingIds = new Set(current.map((record) => record.id));
+    const incomingEvidence = (record: WatchRecord) =>
+      `${resolveItemId(record.itemId)}:${record.rawDate ?? ""}:${record.durationSec}:${record.clientName ?? ""}:${record.deviceName ?? ""}`;
+    const incomingEvidenceCounts = new Map<string, number>();
+    for (const record of current) {
+      const key = incomingEvidence(record);
+      incomingEvidenceCounts.set(key, (incomingEvidenceCounts.get(key) ?? 0) + 1);
+    }
+    if (incomingIds.size !== current.length)
+      throw new Error("Playback Reporting 返回重复播放事件身份，同步未保存，请核对插件数据");
     for (const incoming of current) {
       const sameId = merged.get(incoming.id);
       if (
@@ -1638,46 +1896,73 @@ export class WatchStatisticsStore {
         (sameId.rawDate !== incoming.rawDate || sameId.durationSec !== incoming.durationSec)
       )
         throw new Error("跨服务播放记录身份冲突，请先人工核对档案");
+      if (
+        sameId &&
+        priorSource.get(sameId.id) !== serverId &&
+        sameId.itemId !== resolveItemId(incoming.itemId) &&
+        (!canonical.get(sameId.itemId) ||
+          canonical.get(sameId.itemId) !== canonical.get(incoming.itemId) ||
+          !mediaById.get(sameId.itemId) ||
+          !mediaById.get(incoming.itemId) ||
+          !providerCompatible(mediaById.get(sameId.itemId)!, mediaById.get(incoming.itemId)!))
+      )
+        throw new Error("跨服务播放记录 ID 指向不同作品，同步未保存，请先人工核对档案");
       const record = {
         ...incoming,
-        itemId: merged.get(incoming.id)?.itemId ?? resolveItemId(incoming.itemId),
+        itemId: sameId?.itemId ?? resolveItemId(incoming.itemId),
       };
-      const legacyStart = /(?:Z|[+-]\d\d:\d\d)$/i.test(record.rawDate ?? "")
-        ? record.startAt
-        : new Date(`${(record.rawDate ?? "").replace(" ", "T")}Z`).toISOString();
-      const previousMatch = prior.find(
-        (old) =>
-          old.itemId === record.itemId &&
-          old.clientName === record.clientName &&
-          old.deviceName === record.deviceName &&
-          (priorSource.get(old.id) === serverId ||
-            (old.rawDate === record.rawDate && old.durationSec === record.durationSec)) &&
-          (old.sourceKey === record.sourceKey ||
-            old.startAt === legacyStart ||
-            old.startAt === record.startAt),
-      );
-      let matchedId = previousMatch?.id;
-      if (previousMatch) merged.delete(previousMatch.id);
-      const identity = canonical.get(record.itemId);
-      if (identity)
-        for (const old of merged.values()) {
+      // A source event ID is stronger evidence than a nearby timestamp. Never
+      // consume an old event that also appears independently in this response.
+      let matched = sameId;
+      if (!matched && incomingEvidenceCounts.get(incomingEvidence(record)) === 1) {
+        const identity = canonical.get(record.itemId);
+        const legacyStart = /(?:Z|[+-]\d\d:\d\d)$/i.test(record.rawDate ?? "")
+          ? record.startAt
+          : new Date(`${(record.rawDate ?? "").replace(" ", "T")}Z`).toISOString();
+        const possible = new Map<string, WatchRecord>();
+        for (const date of new Set(
+          [record.rawDate, record.startAt, legacyStart].filter((value): value is string => !!value),
+        ))
+          for (const old of eventBuckets.get(
+            eventKey(record.clientName, record.deviceName, date),
+          ) ?? [])
+            possible.set(old.id, old);
+        const candidates = [...possible.values()].filter((old) => {
+          if (!merged.has(old.id)) return false;
           if (
-            canonical.get(old.itemId) === identity &&
-            (!mediaById.get(old.itemId) ||
-              !mediaById.get(record.itemId) ||
-              providerCompatible(mediaById.get(old.itemId)!, mediaById.get(record.itemId)!)) &&
-            old.clientName === record.clientName &&
-            old.deviceName === record.deviceName &&
-            (priorSource.get(old.id) === serverId ||
-              (old.rawDate === record.rawDate && old.durationSec === record.durationSec)) &&
-            Math.abs(Date.parse(old.startAt) - Date.parse(record.startAt)) < 2000
-          ) {
-            merged.delete(old.id);
-            matchedId = old.id;
-            break;
-          }
-        }
-      merged.set(matchedId ?? record.id, { ...record, id: matchedId ?? record.id });
+            incomingIds.has(old.id) ||
+            old.clientName !== record.clientName ||
+            old.deviceName !== record.deviceName
+          )
+            return false;
+          if (
+            old.itemId !== record.itemId &&
+            (!identity ||
+              canonical.get(old.itemId) !== identity ||
+              (mediaById.get(old.itemId) &&
+                mediaById.get(record.itemId) &&
+                !providerCompatible(mediaById.get(old.itemId)!, mediaById.get(record.itemId)!)))
+          )
+            return false;
+          return (
+            old.sourceKey === record.sourceKey ||
+            (old.rawDate === record.rawDate && old.durationSec === record.durationSec) ||
+            (!old.rawDate &&
+              !old.sourceKey &&
+              old.durationSec === record.durationSec &&
+              (old.startAt === record.startAt || old.startAt === legacyStart))
+          );
+        });
+        if (candidates.length === 1) matched = candidates[0];
+        else if (candidates.length > 1)
+          console.warn("观影统计播放记录关联有歧义，保留原记录", { candidates: candidates.length });
+      }
+      if (matched && matched.id !== record.id) merged.delete(matched.id);
+      merged.set(matched?.id ?? record.id, {
+        ...record,
+        id: matched?.id ?? record.id,
+        startAt: matched?.startAt ?? record.startAt,
+      });
     }
     const records = [...merged.values()].sort(
       (a, b) => Date.parse(b.startAt) - Date.parse(a.startAt),
@@ -1704,7 +1989,15 @@ export class WatchStatisticsStore {
       ...entry,
       itemId: resolveItemId(entry.itemId),
     }));
-    const knownRecords = new Set(previous?.records.map((entry) => entry.id) ?? []);
+    const previousRecords = new Map(previous?.records.map((entry) => [entry.id, entry]) ?? []);
+    const isNewEvidence = (entry: WatchRecord) => {
+      const old = previousRecords.get(entry.id);
+      return (
+        !old ||
+        ((old.durationSec <= 0 || (previous?.settings.excludeShort && old.durationSec < 120)) &&
+          entry.durationSec > old.durationSec)
+      );
+    };
     const baselineNow = new Date().toISOString();
     for (const item of resolvedMedia) {
       if (item.type !== "Movie" && item.type !== "Episode") continue;
@@ -1756,7 +2049,7 @@ export class WatchStatisticsStore {
             ...new Set([
               ...first.evidenceIds,
               ...records
-                .filter((entry) => entry.itemId === item.id && !knownRecords.has(entry.id))
+                .filter((entry) => entry.itemId === item.id && isNewEvidence(entry))
                 .map((entry) => entry.id),
             ]),
           ];
@@ -1778,7 +2071,7 @@ export class WatchStatisticsStore {
           entry.itemId === item.id &&
           entry.durationSec > 0 &&
           (!previous?.settings.excludeShort || entry.durationSec >= 120) &&
-          !knownRecords.has(entry.id) &&
+          isNewEvidence(entry) &&
           !handled.has(entry.id) &&
           (!baselineAt || Date.parse(entry.startAt) > Date.parse(baselineAt)),
       );
@@ -1808,21 +2101,37 @@ export class WatchStatisticsStore {
     const snapshot: WatchStatisticsSnapshot = {
       serverId,
       refreshedAt: new Date().toISOString(),
+      catalogRefreshedAt: catalogScan ? new Date().toISOString() : lastCatalogAt,
       libraries: [...libraries].map(([id, name]) => ({ id, name })),
       media: resolvedMedia,
       records,
+      identityConflicts: [
+        ...new Map(
+          identityConflicts
+            .filter(
+              (entry) =>
+                entry.fromItemId === entry.toItemId ||
+                resolveItemId(entry.fromItemId) !== resolveItemId(entry.toItemId),
+            )
+            .map((entry) => [`${entry.fromItemId}:${entry.toItemId}:${entry.reason}`, entry]),
+        ).values(),
+      ],
       backfill,
       confirmations,
       candidates,
       appliedReviewIds: previous?.appliedReviewIds,
+      revokedConfirmationIds: previous?.revokedConfirmationIds,
       identityLinks,
       corrections,
       settings:
         this.currentSettings.get(this.path(serverId, auth.userId)) ??
         previous?.settings ??
         defaults,
-      cursor: activities.length ? new Date().toISOString() : previous?.cursor,
+      cursor: new Date().toISOString(),
     };
-    return this.save(serverId, auth.userId, snapshot, false, previous);
+    const valid = snapshotSchema.safeParse(snapshot);
+    if (!valid.success)
+      throw new Error(`同步数据无效，档案未保存：${valid.error.issues[0]?.path.join(".")}`);
+    return this.save(serverId, auth.userId, snapshot, false, previous, !catalogScan);
   }
 }

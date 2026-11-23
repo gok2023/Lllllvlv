@@ -102,6 +102,7 @@ export interface WatchStatisticsSettings {
 export interface WatchStatisticsSnapshot {
   serverId: string;
   refreshedAt: string;
+  catalogRefreshedAt?: string;
   media: WatchMedia[];
   records: WatchRecord[];
   backfill: WatchBackfill[];
@@ -114,6 +115,7 @@ export interface WatchStatisticsSnapshot {
   appliedReviewIds?: string[];
   revokedConfirmationIds?: string[];
   identityLinks?: Record<string, string>;
+  identityConflicts?: { fromItemId: string; toItemId: string; reason: string }[];
 }
 export interface WatchStatisticsImportPreview {
   version: number;

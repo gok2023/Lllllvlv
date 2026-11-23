@@ -40,7 +40,7 @@ const api: DesktopAPI = {
   onWatchStatisticsUpdated: (callback) => {
     const listener = (
       _event: unknown,
-      snapshot: import("../src/shared/watch-statistics").WatchStatisticsSnapshot,
+      snapshot: import("../src/shared/watch-statistics").WatchStatisticsSnapshot | null,
     ) => callback(snapshot);
     ipcRenderer.on("app:watch-statistics-updated", listener);
     return () => ipcRenderer.removeListener("app:watch-statistics-updated", listener);

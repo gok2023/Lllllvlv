@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ const episodeIds = ["1", "2", "3", "4"].map((digit) => digit.repeat(32));
 const directories: string[] = [];
 afterEach(async () => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true });
 });
@@ -28,6 +29,70 @@ function episode(id: string) {
     RunTimeTicks: 60_000_000_000,
   };
 }
+
+it("keeps a legacy event ID when only its exact start time survives", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  await store.refresh("server", auth, fetcher([episode(episodeIds[0])], [episodeIds[0]]));
+  const path = join(directory, "watch-statistics", `server-${userId}.json`);
+  const snapshot = JSON.parse(await readFile(path, "utf8"));
+  snapshot.records[0].id = "legacy-event";
+  delete snapshot.records[0].rawDate;
+  delete snapshot.records[0].sourceKey;
+  await writeFile(path, JSON.stringify(snapshot));
+  const updated = await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], [episodeIds[0]]),
+  );
+  expect(updated.records).toHaveLength(1);
+  expect(updated.records[0].id).toBe("legacy-event");
+});
+
+it("keeps independent events one second apart and their original time interpretation", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const base = fetcher([episode(episodeIds[0])], [episodeIds[0]]);
+  let dates = ["2026-11-01 12:00:00"];
+  const withEvents: typeof fetch = (async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (!url.pathname.endsWith("/submit_custom_query")) return base(input, init);
+    return {
+      ok: true,
+      json: async () => ({
+        colums: [...playbackActivityColumns],
+        results: dates.map((date) => [
+          date,
+          userId,
+          episodeIds[0],
+          "Episode",
+          "同一集",
+          1200,
+          "client",
+          "device",
+          "DirectPlay",
+        ]),
+      }),
+    } as Response;
+  }) as typeof fetch;
+  vi.stubEnv("TZ", "UTC");
+  const first = await store.refresh("server", auth, withEvents);
+  dates = ["2026-11-01 12:00:00", "2026-11-01 12:00:01"];
+  vi.stubEnv("TZ", "Asia/Shanghai");
+  const second = await store.refresh("server", auth, withEvents, "incremental");
+  const repeated = await store.refresh("server", auth, withEvents, "incremental");
+  expect(second.records).toHaveLength(2);
+  expect(repeated.records.map((record) => record.id)).toEqual(
+    second.records.map((record) => record.id),
+  );
+  expect(repeated.records.find((record) => record.id === first.records[0].id)?.startAt).toBe(
+    first.records[0].startAt,
+  );
+});
 function series() {
   return { Id: seriesId, Type: "Series", Name: "系列", ProviderIds: { Tmdb: "series-1" } };
 }
@@ -51,6 +116,7 @@ function fetcher(
   items: ReturnType<typeof episode>[],
   records: string[],
   reportUserId = userId,
+  seriesItems: ReturnType<typeof series>[] = [series()],
 ): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
@@ -64,7 +130,7 @@ function fetcher(
     else if (url.pathname.endsWith("/Items")) {
       const ids = url.searchParams.get("Ids");
       const parent = url.searchParams.get("ParentId");
-      const all = items.length ? [series(), ...items] : [];
+      const all = items.length ? [...seriesItems, ...items] : [];
       const found = ids
         ? all.filter((item) => ids.split(",").includes(item.Id))
         : parent === seriesId
@@ -75,6 +141,195 @@ function fetcher(
     return { ok: true, json: async () => body } as Response;
   }) as typeof fetch;
 }
+
+it("rejects malformed media and another user's report without changing archive bytes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  await store.refresh("server", auth, fetcher([episode(episodeIds[0])], [episodeIds[0]]));
+  const path = join(directory, "watch-statistics", `server-${userId}.json`);
+  const before = await readFile(path);
+  const malformed = { ...episode(episodeIds[0]), Genres: [17] } as unknown as ReturnType<
+    typeof episode
+  >;
+  await expect(
+    store.refresh("server", auth, fetcher([malformed], [episodeIds[0]])),
+  ).rejects.toThrow("同步数据无效");
+  expect(await readFile(path)).toEqual(before);
+  await expect(
+    store.refresh(
+      "server",
+      auth,
+      fetcher([episode(episodeIds[0])], [episodeIds[0]], "d".repeat(32)),
+    ),
+  ).rejects.toThrow("播放记录用户与当前 Jellyfin 用户不符");
+  expect(await readFile(path)).toEqual(before);
+});
+
+it("preserves the archive when the sync commit fails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  await store.refresh("server", auth, fetcher([episode(episodeIds[0])], [episodeIds[0]]));
+  const path = join(directory, "watch-statistics", `server-${userId}.json`);
+  const before = await readFile(path);
+  const write = vi
+    .spyOn(
+      store as unknown as { atomicWrite: (path: string, data: string) => Promise<void> },
+      "atomicWrite",
+    )
+    .mockRejectedValueOnce(new Error("synthetic commit failure"));
+  await expect(
+    store.refresh("server", auth, fetcher([episode(episodeIds[1])], [episodeIds[0]])),
+  ).rejects.toThrow("synthetic commit failure");
+  write.mockRestore();
+  expect(await readFile(path)).toEqual(before);
+  expect((await store.get("server", userId))?.media.some((item) => item.id === episodeIds[0])).toBe(
+    true,
+  );
+});
+
+it("bounds automatic catalog scans even when reporting is empty and discovers Played-only media", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-20T12:00:00Z"));
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  let items = [] as ReturnType<typeof episode>[];
+  const requests: string[] = [];
+  const tracked = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    requests.push(url.pathname);
+    return fetcher(items, [])(input, init);
+  }) as typeof fetch;
+  const first = await store.refresh("server", auth, tracked, "incremental");
+  expect(first.cursor).toBeDefined();
+  expect(first.catalogRefreshedAt).toBeDefined();
+  expect(requests.filter((path) => path.endsWith("/Items"))).toHaveLength(1);
+  requests.length = 0;
+  items = [episode(episodeIds[0])];
+  const second = await store.refresh("server", auth, tracked, "incremental");
+  expect(second.media).toHaveLength(0);
+  expect(requests.filter((path) => path.endsWith("/Items"))).toHaveLength(0);
+  vi.setSystemTime(new Date("2026-11-21T12:00:01Z"));
+  requests.length = 0;
+  const third = await store.refresh("server", auth, tracked, "incremental");
+  expect(requests.filter((path) => path.endsWith("/Items"))).toHaveLength(1);
+  expect(third.media.some((item) => item.id === episodeIds[0])).toBe(true);
+  expect(third.confirmations?.some((item) => item.itemId === episodeIds[0])).toBe(true);
+});
+
+it("skips unchanged incremental commits but persists new evidence", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-20T12:00:00Z"));
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const path = join(directory, "watch-statistics", `server-${userId}.json`);
+  await store.refresh("server", auth, fetcher([episode(episodeIds[0])], [episodeIds[0]]));
+  const before = await readFile(path);
+  const write = vi.spyOn(
+    store as unknown as { atomicWrite: (path: string, data: string) => Promise<void> },
+    "atomicWrite",
+  );
+  const unchanged = await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], [episodeIds[0]]),
+    "incremental",
+  );
+  expect(write).not.toHaveBeenCalled();
+  expect(await readFile(path)).toEqual(before);
+  expect(unchanged.cursor).toBeDefined();
+  const added = await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], [episodeIds[0], episodeIds[0]]),
+    "incremental",
+  );
+  expect(write.mock.calls.filter(([target]) => target === path)).toHaveLength(1);
+  expect(added.records).toHaveLength(2);
+  expect(await readFile(path)).not.toEqual(before);
+  vi.setSystemTime(new Date("2026-11-20T13:00:01Z"));
+  await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], [episodeIds[0], episodeIds[0]]),
+    "incremental",
+  );
+  expect(write.mock.calls.filter(([target]) => target === path)).toHaveLength(2);
+  expect((await store.get("server", userId))?.cursor).toBe("2026-11-20T13:00:01.000Z");
+  vi.setSystemTime(new Date("2026-11-20T12:30:00Z"));
+  let catalogRequests = 0;
+  const base = fetcher([episode(episodeIds[0])], [episodeIds[0], episodeIds[0]]);
+  const measured: typeof fetch = (async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (url.pathname.endsWith("/Items") && url.searchParams.has("ParentId")) catalogRequests++;
+    return base(input, init);
+  }) as typeof fetch;
+  const recovered = await store.refresh("server", auth, measured, "incremental");
+  expect(catalogRequests).toBeGreaterThan(0);
+  expect(recovered.cursor).toBe("2026-11-20T12:30:00.000Z");
+});
+
+it("retains a revoked confirmation through sync and archive recovery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const first = await store.refresh("server", auth, fetcher([episode(episodeIds[0])], []));
+  const oldArchive = join(directory, "before-revoke.json");
+  await store.exportData("server", userId, oldArchive);
+  const confirmationId = first.confirmations![0].id;
+  await store.review("server", userId, { action: "revoke", confirmationId });
+  const refreshed = await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], []),
+    "incremental",
+  );
+  expect(refreshed.confirmations).toHaveLength(0);
+  expect(refreshed.revokedConfirmationIds).toContain(confirmationId);
+  const archive = join(directory, "after-revoke.json");
+  await store.exportData("server", userId, archive);
+  const restored = await store.importData("server", userId, archive, "replace");
+  expect(restored.revokedConfirmationIds).toContain(confirmationId);
+  await expect(store.importData("server", userId, oldArchive, "merge")).rejects.toThrow("合并冲突");
+});
+
+it("recognizes an existing zero-duration report when it later gains viewing time", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-01T00:00:00Z"));
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const item = episode(episodeIds[0]);
+  await store.refresh("server", auth, fetcher([item], []));
+  vi.setSystemTime(new Date("2026-11-03T00:00:00Z"));
+  let duration = 0;
+  const reporting = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (url.pathname.endsWith("/submit_custom_query")) {
+      const response = history([item.Id, item.Id]);
+      response.results[0][5] = 0 as never;
+      response.results[1][5] = duration as never;
+      return { ok: true, json: async () => response } as Response;
+    }
+    return fetcher([item], [])(input, init);
+  }) as typeof fetch;
+  const zero = await store.refresh("server", auth, reporting, "incremental");
+  expect(zero.candidates?.filter((entry) => entry.status !== "ignored")).toHaveLength(0);
+  duration = 1200;
+  const updated = await store.refresh("server", auth, reporting, "incremental");
+  expect(updated.candidates?.filter((entry) => entry.status === "pending")).toHaveLength(1);
+  const repeated = await store.refresh("server", auth, reporting, "incremental");
+  expect(repeated.candidates).toEqual(updated.candidates);
+});
 
 it("keeps episode identity and evidence through repeated rebuilds and an incremental source change", async () => {
   const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
@@ -134,6 +389,114 @@ it("keeps episode identity and evidence through repeated rebuilds and an increme
   expect(repeated.confirmations?.map((entry) => entry.id)).toEqual(
     fourth.confirmations?.map((entry) => entry.id),
   );
+  const returned = await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], [episodeIds[0]]),
+  );
+  expect(returned.records.find((entry) => entry.id === recordId)?.itemId).toBe(episodeIds[0]);
+  expect(returned.identityLinks?.[episodeIds[0]]).toBeUndefined();
+  expect(returned.identityLinks?.[episodeIds[2]]).toBe(episodeIds[0]);
+  expect(returned.identityLinks?.[episodeIds[3]]).toBe(episodeIds[0]);
+});
+
+it("keeps conflicting standalone library rules when a provider match suggests remapping", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const movie = (id: string) =>
+    ({
+      Id: id,
+      Type: "Movie",
+      Name: "同一电影",
+      UserData: { Played: false },
+      ProviderIds: { Tmdb: "same" },
+      RunTimeTicks: 60_000_000_000,
+    }) as unknown as ReturnType<typeof episode>;
+  await store.refresh(
+    "server",
+    auth,
+    fetcher([movie(episodeIds[0]), movie(episodeIds[1])], [episodeIds[0]]),
+  );
+  await writeFile(
+    join(directory, "watch-statistics", `server-${userId}.json.corrections.json`),
+    JSON.stringify({
+      records: {},
+      items: { [episodeIds[0]]: "old-library", [episodeIds[1]]: "new-library" },
+    }),
+  );
+  const result = await store.refresh(
+    "server",
+    auth,
+    fetcher([movie(episodeIds[1])], [episodeIds[0]]),
+  );
+  expect(result.identityLinks?.[episodeIds[0]]).toBeUndefined();
+  expect(result.identityConflicts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        fromItemId: episodeIds[0],
+        toItemId: episodeIds[1],
+        reason: "双方媒体库修正矛盾",
+      }),
+    ]),
+  );
+  expect(result.records[0].itemId).toBe(episodeIds[0]);
+  expect(result.corrections?.items).toMatchObject({
+    [episodeIds[0]]: "old-library",
+    [episodeIds[1]]: "new-library",
+  });
+});
+
+it("does not merge two independent candidate histories through an automatic provider remap", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const movie = (id: string) =>
+    ({
+      Id: id,
+      Type: "Movie",
+      Name: "同一电影",
+      UserData: { Played: false },
+      ProviderIds: { Tmdb: "same" },
+    }) as unknown as ReturnType<typeof episode>;
+  await store.refresh(
+    "server",
+    auth,
+    fetcher([movie(episodeIds[0]), movie(episodeIds[1])], [episodeIds[0]]),
+  );
+  const path = join(directory, "watch-statistics", `server-${userId}.json`);
+  const snapshot = await store.get("server", userId);
+  expect(snapshot).not.toBeNull();
+  await writeFile(
+    path,
+    JSON.stringify({
+      ...snapshot,
+      candidates: [
+        { itemId: episodeIds[0], evidenceIds: [snapshot!.records[0].id], status: "later" },
+        { itemId: episodeIds[1], evidenceIds: [], status: "ignored" },
+      ],
+    }),
+  );
+  const result = await store.refresh(
+    "server",
+    auth,
+    fetcher([movie(episodeIds[1])], [episodeIds[0]]),
+  );
+  expect(result.identityLinks?.[episodeIds[0]]).toBeUndefined();
+  expect(result.identityConflicts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        fromItemId: episodeIds[0],
+        toItemId: episodeIds[1],
+        reason: "双方已有独立待处理证据",
+      }),
+    ]),
+  );
+  expect(result.candidates?.map((entry) => entry.itemId).sort()).toEqual(
+    [episodeIds[0], episodeIds[1]].sort(),
+  );
 });
 
 it("rejects an empty full scan without changing the saved archive", async () => {
@@ -169,6 +532,38 @@ it("keeps the old archive when a rebuilt episode has ambiguous matches", async (
   expect(result.media.some((item) => item.id === episodeIds[0])).toBe(true);
   expect(result.records[0].id).toBe(original.records[0].id);
   expect(result.confirmations?.[0]?.itemId).toBe(episodeIds[0]);
+});
+
+it("does not remap an episode when its parent series has two provider matches", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "freebo-watch-refresh-"));
+  directories.push(directory);
+  const store = new WatchStatisticsStore(directory);
+  const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
+  const original = await store.refresh(
+    "server",
+    auth,
+    fetcher([episode(episodeIds[0])], [episodeIds[0]]),
+  );
+  const nextSeries = [
+    { ...series(), Id: "d".repeat(32) },
+    { ...series(), Id: "e".repeat(32) },
+  ];
+  const nextEpisodes = [
+    { ...episode(episodeIds[1]), SeriesId: nextSeries[0].Id },
+    { ...episode(episodeIds[2]), SeriesId: nextSeries[1].Id },
+  ];
+  const result = await store.refresh(
+    "server",
+    auth,
+    fetcher(nextEpisodes, [episodeIds[0]], userId, nextSeries),
+  );
+  expect(result.identityLinks?.[seriesId]).toBeUndefined();
+  expect(result.identityLinks?.[episodeIds[0]]).toBeUndefined();
+  expect(result.records.find((entry) => entry.id === original.records[0].id)?.itemId).toBe(
+    episodeIds[0],
+  );
+  expect(result.confirmations?.[0]?.itemId).toBe(episodeIds[0]);
+  expect(result.backfill[0]?.itemId).toBe(episodeIds[0]);
 });
 
 it("rejects a truncated media page before replacing the archive", async () => {
@@ -331,6 +726,28 @@ it("does not equate same-title movies from different years without provider iden
   expect(result.identityLinks?.[episodeIds[0]]).toBeUndefined();
   expect(result.media.some((item) => item.id === episodeIds[0] && item.year === 1990)).toBe(true);
   expect(result.media.some((item) => item.id === episodeIds[1] && item.year === 2020)).toBe(true);
+  expect(result.identityConflicts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        fromItemId: episodeIds[0],
+        toItemId: episodeIds[1],
+        reason: "同名作品缺少可靠身份，请人工核对",
+      }),
+    ]),
+  );
+  const repeated = await store.refresh(
+    "server",
+    auth,
+    fetcher([movie(episodeIds[1], 2020)], [episodeIds[0]]),
+  );
+  expect(
+    repeated.identityConflicts?.filter(
+      (entry) =>
+        entry.fromItemId === episodeIds[0] &&
+        entry.toItemId === episodeIds[1] &&
+        entry.reason === "同名作品缺少可靠身份，请人工核对",
+    ),
+  ).toHaveLength(1);
 });
 
 it("keeps season zero specials separate from a numbered-season episode", async () => {
@@ -338,10 +755,10 @@ it("keeps season zero specials separate from a numbered-season episode", async (
   directories.push(directory);
   const store = new WatchStatisticsStore(directory);
   const auth = { baseUrl: "http://localhost:12345", userId, token: "synthetic" };
-  const special = episode(episodeIds[0]);
+  const special = { ...episode(episodeIds[0]), ProviderIds: { Tvdb: "same-episode" } };
   special.ParentIndexNumber = 0;
   await store.refresh("server", auth, fetcher([special], [episodeIds[0]]));
-  const regular = episode(episodeIds[1]);
+  const regular = { ...episode(episodeIds[1]), ProviderIds: { Tvdb: "same-episode" } };
   regular.ParentIndexNumber = 1;
   const result = await store.refresh("server", auth, fetcher([regular], [episodeIds[0]]));
   expect(result.identityLinks?.[episodeIds[0]]).toBeUndefined();

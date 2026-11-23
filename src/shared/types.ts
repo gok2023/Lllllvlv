@@ -306,7 +306,7 @@ export interface DesktopAPI {
   exportWatchStatistics(this: void): Promise<string | null>;
   onWatchStatisticsUpdated(
     this: void,
-    callback: (snapshot: import("./watch-statistics").WatchStatisticsSnapshot) => void,
+    callback: (snapshot: import("./watch-statistics").WatchStatisticsSnapshot | null) => void,
   ): () => void;
   onWatchStatisticsStatus(
     this: void,
